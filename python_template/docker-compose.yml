@@ -1,0 +1,7 @@
+version: "3"
+services:
+  python_template:
+    build: .
+    command: "python app.py"
+    ports:
+      - "8080:8080"
