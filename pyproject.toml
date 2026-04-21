@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "PROJECT_NAME"
+version = "0.1.0"
+description = ""
+authors = ["FIRST LAST <EMAIL@machinalabs.ai>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9.10, <=3.9.16"
+streamlit = "^1.16.0"
+pandas = "^1.5.2"
+azure-storage-blob = "^12.14.1"
+tqdm = "^4.64.1"
+stqdm = "^0.0.4"
+watchdog = "^2.2.0"
+databricks-sql-connector = "^2.2.1"
+matplotlib = "^3.6.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
