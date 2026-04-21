@@ -139,6 +139,14 @@ class PartInputs:
     setup_skirt_path_plan_sim_hrs: float
 
 
+def _op_labor_robot(op: str, robot_hrs: float, strength: str, year: int) -> tuple[float, float]:
+    """Returns (labor_cost, robot_cost) for a single operation."""
+    lh = _get_labor(op, year)
+    labor = lh["RPE"] * _rate("RPE", year) + lh["ME"] * _rate("ME", year) + lh["Tech"] * _rate("Tech", year)
+    robot = robot_hrs * _robot_improvement(year) * _rate(strength, year)
+    return labor, robot
+
+
 def calc_first_part_cost(part: PartInputs, year: int) -> dict:
     s = part.robot_strength
 
@@ -171,6 +179,28 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
         + scan_op + cut_op
     )
 
+    # ── Category breakdown ───────────────────────────────────────────────────
+    pif_f_l,  pif_f_r  = _op_labor_robot("pre_if_forming", part.forming_time_hrs,  s, year)
+    pif_s_l,  pif_s_r  = _op_labor_robot("scanning",       part.scanning_time_hrs, s, year)
+    if_f_l,   if_f_r   = _op_labor_robot("if_forming",     part.forming_time_hrs,  s, year)
+    if_s_l,   if_s_r   = _op_labor_robot("scanning",       part.scanning_time_hrs, s, year)
+    fs_l,     fs_r     = _op_labor_robot("scanning",       part.scanning_time_hrs, s, year)
+    fc_l,     fc_r     = _op_labor_robot("cutting",        part.cutting_time_hrs,  s, year) if part.cutting_time_hrs > 0 else (0.0, 0.0)
+
+    cat_labor = (
+        (pif_f_l + pif_s_l) * part.est_pre_if_procedures
+        + (if_f_l + if_s_l) * part.est_if_procedures
+        + fs_l + fc_l
+        + rpe_setup + purchaser_setup + pm_setup
+        + unistrut_cost + purchaser_ovhd + pm_ovhd
+        + part.pp_internal + part.pp_external + part.first_part_additional_setup
+    )
+    cat_robot = (
+        (pif_f_r + pif_s_r) * part.est_pre_if_procedures
+        + (if_f_r + if_s_r) * part.est_if_procedures
+        + fs_r + fc_r
+    )
+
     return {
         "total": total,
         "breakdown": {
@@ -185,6 +215,13 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
             "pm_overhead":         pm_ovhd,
             "post_processing":     pp_first,
             "final_scan_cut_scan": scan_op + cut_op,
+        },
+        "category_breakdown": {
+            "labor":     cat_labor,
+            "robot":     cat_robot,
+            "materials": part.cost_per_sheet * (part.est_pre_if_procedures + part.est_if_procedures),
+            "heat_treat": part.ht_cost_per_part,
+            "shipping":  prep_shipping,
         },
     }
 
@@ -202,6 +239,11 @@ def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
 
     total = dup_proc + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd + pp_dup
 
+    # ── Category breakdown ───────────────────────────────────────────────────
+    df_l, df_r = _op_labor_robot("dup_forming", part.forming_time_hrs,  s, year)
+    ds_l, ds_r = _op_labor_robot("scanning",    part.scanning_time_hrs, s, year)
+    dc_l, dc_r = _op_labor_robot("cutting",     part.cutting_time_hrs,  s, year) if part.cutting_time_hrs > 0 else (0.0, 0.0)
+
     return {
         "total": total,
         "breakdown": {
@@ -211,6 +253,13 @@ def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
             "purchaser_overhead":  purchaser_ovhd,
             "pm_overhead":         pm_ovhd,
             "post_processing":     pp_dup,
+        },
+        "category_breakdown": {
+            "labor":     df_l + ds_l * 2 + dc_l + unistrut_cost + purchaser_ovhd + pm_ovhd + part.pp_internal + part.pp_external,
+            "robot":     df_r + ds_r * 2 + dc_r,
+            "materials": part.cost_per_sheet,
+            "heat_treat": part.ht_cost_per_part,
+            "shipping":  prep_shipping,
         },
     }
 
@@ -225,6 +274,8 @@ def calc_part_assembly_costs(part: PartInputs, year: int) -> dict:
         "dup_part_cost":   dup["total"],
         "first_breakdown": first["breakdown"],
         "dup_breakdown":   dup["breakdown"],
+        "first_category_breakdown": first["category_breakdown"],
+        "dup_category_breakdown":   dup["category_breakdown"],
     }
 
 

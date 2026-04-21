@@ -439,34 +439,71 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* Flat constants (rates + misc without years) */}
-                  {flat.length > 0 && (
-                    <div style={{ marginBottom: 24 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-                        Hourly Rates &amp; Fixed Overhead
-                      </div>
-                      <div className="quote-section">
-                        <table className="quote-table">
-                          <thead>
-                            <tr>
-                              <th>Description</th>
-                              <th className="right">Value</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {flat.map(c => (
-                              <tr key={c.key}>
-                                <td>{c.description ?? c.key}</td>
-                                <td className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                                  {fmtVal(c.value)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
+                  {/* Flat constants — split into rates (private) and fixed hours */}
+                  {(() => {
+                    const FIXED_HOURS_KEYS = new Set(['purchaser_setup_hrs', 'pm_setup_hrs', 'purchaser_overhead_hrs', 'pm_overhead_hrs'])
+                    const rateConsts  = flat.filter(c => c.key.startsWith('rate_'))
+                    const hoursConsts = flat.filter(c => FIXED_HOURS_KEYS.has(c.key))
+                    return (
+                      <>
+                        {hoursConsts.length > 0 && (
+                          <div style={{ marginBottom: 24 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                              Fixed Hours (no year variance)
+                            </div>
+                            <div className="quote-section">
+                              <table className="quote-table">
+                                <thead>
+                                  <tr>
+                                    <th>Description</th>
+                                    <th className="right">Hours</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {hoursConsts.map(c => (
+                                    <tr key={c.key}>
+                                      <td>{c.description ?? c.key}</td>
+                                      <td className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(c.value)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                        {rateConsts.length > 0 && (
+                          <div style={{ marginBottom: 24 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                              Hourly Rates
+                            </div>
+                            <div className="quote-section">
+                              <table className="quote-table">
+                                <thead>
+                                  <tr>
+                                    <th>Description</th>
+                                    <th className="right">Value</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {rateConsts.map(c => {
+                                    const isRobot = ['rate_Small', 'rate_Medium', 'rate_Large'].includes(c.key)
+                                    return (
+                                      <tr key={c.key}>
+                                        <td>{c.description ?? c.key}</td>
+                                        <td className="right" style={isRobot ? { fontFamily: 'monospace', fontWeight: 600 } : { color: 'var(--gray-400)', fontStyle: 'italic' }}>
+                                          {isRobot ? fmtVal(c.value) : 'private'}
+                                        </td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
                 </>
               )
             })()}

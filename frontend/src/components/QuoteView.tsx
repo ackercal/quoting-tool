@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api/client'
-import type { QuoteResult, PartCostDetail, Part, YearPrice } from '../types'
+import type { QuoteResult, PartCostDetail, Part, YearPrice, CategoryBreakdown } from '../types'
 import QuotePDFContent from './QuotePDFContent'
 
 interface Props { projectId: number }
@@ -80,7 +80,7 @@ function CostBarChart({ parts, details }: { parts: Part[]; details: PartCostDeta
         </g>
 
         {/* Legend */}
-        <g transform={`translate(${ml}, ${H - 12})`}>
+        <g transform={`translate(${(W - 194) / 2}, ${H - 12})`}>
           <rect x={0} y={-9} width={10} height={10} fill="#FF9900" rx={1} />
           <text x={14} y={0} fontSize={11} fill="#2E2E2E">First Part</text>
           <rect x={90} y={-9} width={10} height={10} fill="#4A7FC1" rx={1} />
@@ -171,7 +171,7 @@ function YearPriceChart({ yearPrices, currentYear }: { yearPrices: Record<number
         </g>
 
         {/* Legend */}
-        <g transform={`translate(${ml}, ${H - 12})`}>
+        <g transform={`translate(${(W - 99) / 2}, ${H - 12})`}>
           <rect x={0} y={-9} width={10} height={10} fill="#FF9900" rx={1} />
           <text x={14} y={0} fontSize={11} fill="#2E2E2E">Price</text>
           <rect x={60} y={-9} width={10} height={10} fill="#4A7FC1" rx={1} />
@@ -261,6 +261,43 @@ function BreakdownTable({ label, detail, isFirst }: { label: string; detail: Par
         <tr className="subtotal">
           <td>Total per Part</td>
           <td className="right">{$2(tot)}</td>
+        </tr>
+      </tbody>
+    </table>
+  )
+}
+
+function CategoryBreakdownTable({ label, breakdown, total }: { label: string; breakdown: CategoryBreakdown; total: number }) {
+  const rows: [string, number][] = [
+    ['Labor',      breakdown.labor],
+    ['Robot',      breakdown.robot],
+    ['Materials',  breakdown.materials],
+    ['Heat Treat', breakdown.heat_treat],
+    ['Shipping',   breakdown.shipping],
+  ]
+  return (
+    <table className="quote-table">
+      <thead>
+        <tr>
+          <th>{label} — Category Summary</th>
+          <th className="right">Cost</th>
+          <th className="right">% of Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([name, val]) => (
+          <tr key={name}>
+            <td style={{ paddingLeft: 32 }}>{name}</td>
+            <td className="right">{$2(val)}</td>
+            <td className="right" style={{ color: 'var(--gray-400)', fontSize: 12 }}>
+              {total > 0 ? `${((val / total) * 100).toFixed(1)}%` : '—'}
+            </td>
+          </tr>
+        ))}
+        <tr className="subtotal">
+          <td>Total per Part</td>
+          <td className="right">{$2(total)}</td>
+          <td className="right">100%</td>
         </tr>
       </tbody>
     </table>
@@ -419,7 +456,25 @@ export default function QuoteView({ projectId }: Props) {
             totalLabel="duplicate cost / assembly"
             defaultOpen={false}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderTop: '1px solid var(--gray-200)' }}>
+            {detail.first_category_breakdown && detail.dup_category_breakdown && (
+              <>
+                <div style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray-400)', borderTop: '1px solid var(--gray-200)', background: 'var(--gray-50)' }}>
+                  Breakdown by Category
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                  <div style={{ borderRight: '1px solid var(--gray-200)' }}>
+                    <CategoryBreakdownTable label="First Part" breakdown={detail.first_category_breakdown} total={detail.first_part_cost} />
+                  </div>
+                  <div>
+                    <CategoryBreakdownTable label="Duplicate Part" breakdown={detail.dup_category_breakdown} total={detail.dup_part_cost} />
+                  </div>
+                </div>
+              </>
+            )}
+            <div style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray-400)', borderTop: '1px solid var(--gray-200)', background: 'var(--gray-50)' }}>
+              Breakdown by Step
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
               <div style={{ borderRight: '1px solid var(--gray-200)' }}>
                 <BreakdownTable label="First Part" detail={detail} isFirst={true} />
               </div>

@@ -105,7 +105,7 @@ function PartPriceChart({ parts, details, margin }: { parts: Part[]; details: Pa
         })}
         <line x1={0} y1={cH} x2={cW} y2={cH} stroke="#CCCCCC" strokeWidth={1} />
       </g>
-      <g transform={`translate(${ml}, ${H - 12})`}>
+      <g transform={`translate(${(W - 194) / 2}, ${H - 12})`}>
         <rect x={0} y={-9} width={10} height={10} fill="#FF9900" rx={1} />
         <text x={14} y={0} fontSize={11} fill="#2E2E2E">First Part</text>
         <rect x={90} y={-9} width={10} height={10} fill="#4A7FC1" rx={1} />
@@ -200,6 +200,55 @@ export default function QuotePDFContent({ quote }: Props) {
             })}
           </tbody>
         </table>
+
+        {/* ── Category breakdown per part ── */}
+        {part_details.some(d => d.first_category_breakdown) && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12, marginTop: 28 }}>Price Breakdown by Category</div>
+            {parts.map((part, i) => {
+              const d = part_details[i]
+              if (!d?.first_category_breakdown) return null
+              const fc = d.first_category_breakdown
+              const dc = d.dup_category_breakdown
+              const m = 1 - margin
+              const categories: [string, number, number][] = [
+                ['Labor',      fc.labor      / m, dc.labor      / m],
+                ['Robot',      fc.robot      / m, dc.robot      / m],
+                ['Materials',  fc.materials  / m, dc.materials  / m],
+                ['Heat Treat', fc.heat_treat / m, dc.heat_treat / m],
+                ['Shipping',   fc.shipping   / m, dc.shipping   / m],
+              ]
+              return (
+                <div key={part.id} style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#6B6B6B', marginBottom: 6 }}>{part.name}</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#F5F5F5' }}>
+                        {['Category', 'First Part Price', 'Duplicate Part Price'].map(h => (
+                          <th key={h} style={{ padding: '8px 16px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6B6B6B', textAlign: h === 'Category' ? 'left' : 'right', borderBottom: '2px solid #E8E8E8' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categories.map(([name, fp, dp]) => (
+                        <tr key={name}>
+                          <td style={{ padding: '7px 16px', fontSize: 12, borderBottom: '1px solid #eee' }}>{name}</td>
+                          <td style={{ padding: '7px 16px', fontSize: 12, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(fp)}</td>
+                          <td style={{ padding: '7px 16px', fontSize: 12, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(dp)}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ background: '#F5F5F5' }}>
+                        <td style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, borderBottom: '1px solid #E8E8E8' }}>Total</td>
+                        <td style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #E8E8E8' }}>{$(d.first_part_cost / m)}</td>
+                        <td style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #E8E8E8' }}>{$(d.dup_part_cost / m)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })}
+          </>
+        )}
 
         {/* ── Total ── */}
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>

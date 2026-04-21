@@ -73,6 +73,14 @@ export interface DupBreakdown {
   post_processing: number;
 }
 
+export interface CategoryBreakdown {
+  labor: number;
+  robot: number;
+  materials: number;
+  heat_treat: number;
+  shipping: number;
+}
+
 export interface PartCostDetail {
   first_assembly: number;
   dup_assembly: number;
@@ -80,6 +88,8 @@ export interface PartCostDetail {
   dup_part_cost: number;
   first_breakdown: PartBreakdown;
   dup_breakdown: DupBreakdown;
+  first_category_breakdown: CategoryBreakdown;
+  dup_category_breakdown: CategoryBreakdown;
 }
 
 export interface YearPrice {
