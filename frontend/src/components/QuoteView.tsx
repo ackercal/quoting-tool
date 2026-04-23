@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { api } from '../api/client'
 import type { QuoteResult, PartCostDetail, Part, YearPrice, CategoryBreakdown } from '../types'
 import QuotePDFContent from './QuotePDFContent'
+import { partDisplayName } from '../utils/manufacturing'
 
 interface Props { projectId: number }
 
@@ -100,7 +101,7 @@ function YearPriceChart({ yearPrices, currentYear }: { yearPrices: Record<number
   const cH = H - mt - mb
   const TICKS = 4
 
-  const allVals = YEARS.flatMap(y => [yearPrices[y]?.quoted_price ?? 0, yearPrices[y]?.total_cost ?? 0])
+  const allVals = YEARS.flatMap(y => [yearPrices[y]?.first_assembly_price ?? 0, yearPrices[y]?.dup_assembly_price ?? 0])
   const yMax = niceMax(Math.max(...allVals, 0))
   const sy = (v: number) => cH - (v / yMax) * cH
 
@@ -108,16 +109,15 @@ function YearPriceChart({ yearPrices, currentYear }: { yearPrices: Record<number
   const barW = Math.min(groupW * 0.28, 60)
   const gap = barW * 0.3
 
-  const base2026Price = yearPrices[2026]?.quoted_price ?? 0
+  const base2026First = yearPrices[2026]?.first_assembly_price ?? 0
 
   return (
     <div style={{ background: 'var(--white)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '16px 0 4px', marginBottom: 24 }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-600)', padding: '0 20px 10px' }}>
-        Projected Price by Year of Execution
+        Assembly Price by Year of Execution
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
         <g transform={`translate(${ml},${mt})`}>
-          {/* Grid + Y labels */}
           {Array.from({ length: TICKS + 1 }, (_, i) => {
             const val = (yMax / TICKS) * i
             const y = sy(val)
@@ -129,36 +129,32 @@ function YearPriceChart({ yearPrices, currentYear }: { yearPrices: Record<number
             )
           })}
 
-          {/* Bars */}
           {YEARS.map((yr, i) => {
             const cx = (i + 0.5) * groupW
-            const price = yearPrices[yr]?.quoted_price ?? 0
-            const cost  = yearPrices[yr]?.total_cost  ?? 0
-            const pH = Math.max((price / yMax) * cH, 0)
-            const cHt = Math.max((cost  / yMax) * cH, 0)
+            const first = yearPrices[yr]?.first_assembly_price ?? 0
+            const dup   = yearPrices[yr]?.dup_assembly_price   ?? 0
+            const fH = Math.max((first / yMax) * cH, 0)
+            const dH = Math.max((dup   / yMax) * cH, 0)
             const isSelected = yr === currentYear
-            const savings = base2026Price > 0 && yr > 2026
-              ? `−${((1 - price / base2026Price) * 100).toFixed(0)}%`
+            const savings = base2026First > 0 && yr > 2026
+              ? `−${((1 - first / base2026First) * 100).toFixed(0)}%`
               : null
 
             return (
               <g key={yr}>
-                {/* highlight band for selected year */}
                 {isSelected && (
                   <rect x={cx - groupW * 0.45} y={0} width={groupW * 0.9} height={cH}
                     fill="#FF9900" fillOpacity={0.05} rx={4} />
                 )}
-                <rect x={cx - gap / 2 - barW} y={sy(price)} width={barW} height={pH} fill="#FF9900" rx={2} fillOpacity={isSelected ? 1 : 0.6}>
-                  <title>Price: {$2(price)}</title>
+                <rect x={cx - gap / 2 - barW} y={sy(first)} width={barW} height={fH} fill="#FF9900" rx={2} fillOpacity={isSelected ? 1 : 0.6}>
+                  <title>First Assembly: {$2(first)}</title>
                 </rect>
-                <rect x={cx + gap / 2} y={sy(cost)} width={barW} height={cHt} fill="#4A7FC1" rx={2} fillOpacity={isSelected ? 1 : 0.6}>
-                  <title>Cost: {$2(cost)}</title>
+                <rect x={cx + gap / 2} y={sy(dup)} width={barW} height={dH} fill="#4A7FC1" rx={2} fillOpacity={isSelected ? 1 : 0.6}>
+                  <title>Duplicate Assembly: {$2(dup)}</title>
                 </rect>
-                {/* savings label above price bar */}
                 {savings && (
-                  <text x={cx - gap / 2 - barW / 2} y={sy(price) - 5} textAnchor="middle" fontSize={10} fill="#22a06b" fontWeight="700">{savings}</text>
+                  <text x={cx - gap / 2 - barW / 2} y={sy(first) - 5} textAnchor="middle" fontSize={10} fill="#22a06b" fontWeight="700">{savings}</text>
                 )}
-                {/* year label */}
                 <text x={cx} y={cH + 18} textAnchor="middle" fontSize={12} fill={isSelected ? '#191919' : '#6B6B6B'} fontWeight={isSelected ? '700' : '400'}>{yr}</text>
                 {isSelected && (
                   <text x={cx} y={cH + 32} textAnchor="middle" fontSize={9} fill="#FF9900" fontWeight="600">selected</text>
@@ -171,11 +167,11 @@ function YearPriceChart({ yearPrices, currentYear }: { yearPrices: Record<number
         </g>
 
         {/* Legend */}
-        <g transform={`translate(${(W - 99) / 2}, ${H - 12})`}>
+        <g transform={`translate(${(W - 230) / 2}, ${H - 12})`}>
           <rect x={0} y={-9} width={10} height={10} fill="#FF9900" rx={1} />
-          <text x={14} y={0} fontSize={11} fill="#2E2E2E">Price</text>
-          <rect x={60} y={-9} width={10} height={10} fill="#4A7FC1" rx={1} />
-          <text x={74} y={0} fontSize={11} fill="#2E2E2E">Cost</text>
+          <text x={14} y={0} fontSize={11} fill="#2E2E2E">First Assembly</text>
+          <rect x={120} y={-9} width={10} height={10} fill="#4A7FC1" rx={1} />
+          <text x={134} y={0} fontSize={11} fill="#2E2E2E">Duplicate Assembly</text>
         </g>
       </svg>
     </div>
@@ -267,11 +263,10 @@ function BreakdownTable({ label, detail, isFirst }: { label: string; detail: Par
   )
 }
 
-function CategoryBreakdownTable({ label, breakdown, total }: { label: string; breakdown: CategoryBreakdown; total: number }) {
+function CategoryBreakdownTable({ label, breakdown, total, totalLabel = 'Total per Part' }: { label: string; breakdown: CategoryBreakdown; total: number; totalLabel?: string }) {
   const rows: [string, number][] = [
     ['Labor',      breakdown.labor],
     ['Robot',      breakdown.robot],
-    ['Materials',  breakdown.materials],
     ['Heat Treat', breakdown.heat_treat],
     ['Shipping',   breakdown.shipping],
   ]
@@ -295,7 +290,7 @@ function CategoryBreakdownTable({ label, breakdown, total }: { label: string; br
           </tr>
         ))}
         <tr className="subtotal">
-          <td>Total per Part</td>
+          <td>{totalLabel}</td>
           <td className="right">{$2(total)}</td>
           <td className="right">100%</td>
         </tr>
@@ -343,8 +338,8 @@ export default function QuoteView({ projectId }: Props) {
   if (!quote)  return null
 
   const { project, parts, part_details, total_cost, quoted_price,
-          first_assembly_cost, dup_assembly_cost, num_dup_assemblies,
-          rpe_splitting, margin, year_prices } = quote
+          first_assembly_cost, dup_assembly_cost, first_assembly_price, dup_assembly_price,
+          num_dup_assemblies, rpe_splitting, margin, year_prices } = quote
 
   return (
     <div className="quote-page">
@@ -362,7 +357,7 @@ export default function QuoteView({ projectId }: Props) {
           ['Year of Execution',   project.year_of_execution],
           ['Assemblies',          `${project.quantity_of_assemblies} (1 first + ${num_dup_assemblies} duplicate)`],
           ['Unique Parts',        parts.length],
-          ['Gross Margin',        pct(margin)],
+          ['Blended Margin',      quoted_price > 0 ? pct((quoted_price - total_cost) / quoted_price) : '—'],
           ...(project.material_type ? [['Material', project.material_type]] : []),
         ].map(([label, value]) => (
           <div key={String(label)}>
@@ -380,11 +375,11 @@ export default function QuoteView({ projectId }: Props) {
         </div>
         <div className="summary-card highlight">
           <div className="summary-card-label">Duplicate Assembly Price</div>
-          <div className="summary-card-value">{$(dup_assembly_cost / (1 - margin))}</div>
+          <div className="summary-card-value">{$(dup_assembly_price ?? dup_assembly_cost / (1 - margin))}</div>
         </div>
         <div className="summary-card highlight">
           <div className="summary-card-label">First Assembly Price</div>
-          <div className="summary-card-value">{$(first_assembly_cost / (1 - margin))}</div>
+          <div className="summary-card-value">{$(first_assembly_price ?? first_assembly_cost / (1 - margin))}</div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
@@ -402,6 +397,18 @@ export default function QuoteView({ projectId }: Props) {
         </div>
       </div>
 
+      {/* ── Project category breakdown ── */}
+      {quote.project_category_breakdown && (
+        <Section title="Cost Breakdown by Category" defaultOpen={false}>
+          <CategoryBreakdownTable
+            label="Total Project"
+            breakdown={quote.project_category_breakdown}
+            total={total_cost}
+            totalLabel="Total Project Cost"
+          />
+        </Section>
+      )}
+
       {/* ── Cost bar chart ── */}
       <CostBarChart parts={parts} details={part_details} />
 
@@ -409,7 +416,7 @@ export default function QuoteView({ projectId }: Props) {
       {year_prices && <YearPriceChart yearPrices={year_prices} currentYear={project.year_of_execution} />}
 
       {/* ── Project-level overhead ── */}
-      <Section title="Project-Level Overhead" total={rpe_splitting + project.assembly_first_part_setup + project.assembly_pp_internal + project.assembly_pp_external} defaultOpen={false}>
+      <Section title="Project-Level Overhead (Cost)" total={rpe_splitting + project.assembly_first_part_setup + project.assembly_pp_internal + project.assembly_pp_external + (project.shipping_cost ?? 0)} totalLabel="total cost" defaultOpen={false}>
         <table className="quote-table">
           <thead>
             <tr>
@@ -439,6 +446,11 @@ export default function QuoteView({ projectId }: Props) {
               <td className="right">{$2(project.assembly_first_part_setup)}</td>
               <td className="right">—</td>
             </tr>
+            <tr>
+              <td>Shipping</td>
+              <td className="right">{$2(project.shipping_cost ?? 0)}</td>
+              <td className="right">—</td>
+            </tr>
           </tbody>
         </table>
       </Section>
@@ -450,38 +462,48 @@ export default function QuoteView({ projectId }: Props) {
         return (
           <Section
             key={part.id}
-            title={part.name}
+            title={partDisplayName(part.name, part.manufacturing_method)}
             subtitle={`${part.quantity_per_assembly} per assembly`}
             total={detail.dup_assembly}
             totalLabel="duplicate cost / assembly"
             defaultOpen={false}
           >
-            {detail.first_category_breakdown && detail.dup_category_breakdown && (
-              <>
-                <div style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray-400)', borderTop: '1px solid var(--gray-200)', background: 'var(--gray-50)' }}>
-                  Breakdown by Category
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-                  <div style={{ borderRight: '1px solid var(--gray-200)' }}>
-                    <CategoryBreakdownTable label="First Part" breakdown={detail.first_category_breakdown} total={detail.first_part_cost} />
+            {part.manufacturing_method !== 'roboformed' ? (
+              <table className="quote-table" style={{ borderTop: '1px solid var(--gray-200)' }}>
+                <thead><tr><th>Cost</th><th className="right">Per Part</th></tr></thead>
+                <tbody>
+                  <tr><td style={{ paddingLeft: 32 }}>First Part</td><td className="right">{$2(detail.first_part_cost)}</td></tr>
+                  <tr><td style={{ paddingLeft: 32 }}>Duplicate Part</td><td className="right">{$2(detail.dup_part_cost)}</td></tr>
+                </tbody>
+              </table>
+            ) : (<>
+              {detail.first_category_breakdown && detail.dup_category_breakdown && (
+                <>
+                  <div style={{ padding: '16px 20px 12px', fontSize: 14, fontWeight: 700, color: '#191919', borderTop: '1px solid var(--gray-200)' }}>
+                    Breakdown by Category (Cost)
                   </div>
-                  <div>
-                    <CategoryBreakdownTable label="Duplicate Part" breakdown={detail.dup_category_breakdown} total={detail.dup_part_cost} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                    <div style={{ borderRight: '1px solid var(--gray-200)' }}>
+                      <CategoryBreakdownTable label="First Part" breakdown={detail.first_category_breakdown} total={detail.first_part_cost} />
+                    </div>
+                    <div>
+                      <CategoryBreakdownTable label="Duplicate Part" breakdown={detail.dup_category_breakdown} total={detail.dup_part_cost} />
+                    </div>
                   </div>
+                </>
+              )}
+              <div style={{ padding: '16px 20px 12px', fontSize: 14, fontWeight: 700, color: '#191919', borderTop: '1px solid var(--gray-200)' }}>
+                Breakdown by Step (Cost)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div style={{ borderRight: '1px solid var(--gray-200)' }}>
+                  <BreakdownTable label="First Part" detail={detail} isFirst={true} />
                 </div>
-              </>
-            )}
-            <div style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray-400)', borderTop: '1px solid var(--gray-200)', background: 'var(--gray-50)' }}>
-              Breakdown by Step
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-              <div style={{ borderRight: '1px solid var(--gray-200)' }}>
-                <BreakdownTable label="First Part" detail={detail} isFirst={true} />
+                <div>
+                  <BreakdownTable label="Duplicate Part" detail={detail} isFirst={false} />
+                </div>
               </div>
-              <div>
-                <BreakdownTable label="Duplicate Part" detail={detail} isFirst={false} />
-              </div>
-            </div>
+            </>)}
           </Section>
         )
       })}
@@ -510,7 +532,7 @@ export default function QuoteView({ projectId }: Props) {
           Large: 'Large (M2000)',
         }
         const rows = parts.map(p => ({
-          name:           p.name,
+          name:           partDisplayName(p.name, p.manufacturing_method),
           robot:          ROBOT_LABELS[p.robot_strength] ?? p.robot_strength,
           forming:        p.forming_time_hrs,
           scanning:       p.scanning_time_hrs,

@@ -46,6 +46,8 @@ class ProjectCreate(BaseModel):
     assembly_pp_external: float = 0
     assembly_first_part_setup: float = 0
     setup_splitting_hrs: float = 0
+    shipping_cost: float = 0
+    osp_margin: float = 0.10
     internal_notes: Optional[str] = None
     is_active: int = 1
 
@@ -77,6 +79,11 @@ class PartCreate(BaseModel):
     pp_external: float = 0
     first_part_additional_setup: float = 0
     setup_skirt_path_plan_sim_hrs: float = 4
+    shipping_cost_per_part: float = 0
+    manufacturing_method: str = "roboformed"
+    other_mfg_internal: int = 1
+    other_mfg_cost: float = 0
+    other_mfg_cost_dup: float = 0
     internal_notes: Optional[str] = None
     sort_order: int = 0
 
@@ -123,6 +130,8 @@ def list_projects():
                     assembly_pp_external=proj["assembly_pp_external"],
                     assembly_first_part_setup=proj["assembly_first_part_setup"],
                     setup_splitting_hrs=proj["setup_splitting_hrs"],
+                    shipping_cost=proj.get("shipping_cost", 0),
+                    osp_margin=proj.get("osp_margin", 0.10),
                 )
                 part_inputs = [PartInputs(
                     quantity_per_assembly=pt["quantity_per_assembly"],
@@ -139,6 +148,12 @@ def list_projects():
                     pp_external=pt["pp_external"],
                     first_part_additional_setup=pt["first_part_additional_setup"],
                     setup_skirt_path_plan_sim_hrs=pt["setup_skirt_path_plan_sim_hrs"],
+                    parts_per_sheet=pt.get("parts_per_sheet", 1) or 1,
+                    shipping_cost_per_part=pt.get("shipping_cost_per_part", 0),
+                    manufacturing_method=pt.get("manufacturing_method", "roboformed"),
+                    other_mfg_internal=bool(pt.get("other_mfg_internal", 1)),
+                    other_mfg_cost=pt.get("other_mfg_cost", 0),
+                    other_mfg_cost_dup=pt.get("other_mfg_cost_dup", 0),
                 ) for pt in parts_data]
                 quote = calc_project_quote(proj_inputs, part_inputs)
                 proj["quoted_price"] = quote["quoted_price"]
@@ -158,12 +173,12 @@ def create_project(data: ProjectCreate):
         """INSERT INTO projects
            (name,quantity_of_assemblies,material_type,ht_type,internal_margin,
             year_of_execution,assembly_pp_internal,assembly_pp_external,
-            assembly_first_part_setup,setup_splitting_hrs,internal_notes,is_active)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            assembly_first_part_setup,setup_splitting_hrs,shipping_cost,osp_margin,internal_notes,is_active)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
          data.internal_margin, data.year_of_execution, data.assembly_pp_internal,
          data.assembly_pp_external, data.assembly_first_part_setup,
-         data.setup_splitting_hrs, data.internal_notes, data.is_active),
+         data.setup_splitting_hrs, data.shipping_cost, data.osp_margin, data.internal_notes, data.is_active),
     )
     pid = c.lastrowid
     conn.commit()
@@ -194,13 +209,13 @@ def update_project(pid: int, data: ProjectUpdate):
            name=?,quantity_of_assemblies=?,material_type=?,ht_type=?,
            internal_margin=?,year_of_execution=?,assembly_pp_internal=?,
            assembly_pp_external=?,assembly_first_part_setup=?,
-           setup_splitting_hrs=?,internal_notes=?,is_active=?,
+           setup_splitting_hrs=?,shipping_cost=?,osp_margin=?,internal_notes=?,is_active=?,
            updated_at=datetime('now')
            WHERE id=?""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
          data.internal_margin, data.year_of_execution, data.assembly_pp_internal,
          data.assembly_pp_external, data.assembly_first_part_setup,
-         data.setup_splitting_hrs, data.internal_notes, data.is_active, pid),
+         data.setup_splitting_hrs, data.shipping_cost, data.osp_margin, data.internal_notes, data.is_active, pid),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
@@ -234,8 +249,10 @@ def create_part(pid: int, data: PartCreate):
             est_pre_if_procedures,est_if_procedures,sheet_type,parts_per_sheet,
             cost_per_sheet,ht_cost_per_part,unistrut,robot_strength,
             pp_internal,pp_external,first_part_additional_setup,
-            setup_skirt_path_plan_sim_hrs,internal_notes,sort_order)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            setup_skirt_path_plan_sim_hrs,shipping_cost_per_part,
+            manufacturing_method,other_mfg_internal,other_mfg_cost,other_mfg_cost_dup,
+            internal_notes,sort_order)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (pid, data.name, data.quantity_per_assembly, data.skirted_geometry_file,
          data.minimum_thickness_mm, data.on_cell_surface_finish_ra, data.profile_tolerance_mm,
          data.forming_time_hrs, data.scanning_time_hrs, data.cutting_time_hrs,
@@ -243,7 +260,8 @@ def create_part(pid: int, data: PartCreate):
          data.sheet_type, data.parts_per_sheet, data.cost_per_sheet, data.ht_cost_per_part,
          data.unistrut, data.robot_strength, data.pp_internal, data.pp_external,
          data.first_part_additional_setup, data.setup_skirt_path_plan_sim_hrs,
-         data.internal_notes, data.sort_order),
+         data.shipping_cost_per_part, data.manufacturing_method, data.other_mfg_internal,
+         data.other_mfg_cost, data.other_mfg_cost_dup, data.internal_notes, data.sort_order),
     )
     part_id = c.lastrowid
     conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (pid,))
@@ -264,7 +282,9 @@ def update_part(part_id: int, data: PartUpdate):
            est_pre_if_procedures=?,est_if_procedures=?,sheet_type=?,parts_per_sheet=?,
            cost_per_sheet=?,ht_cost_per_part=?,unistrut=?,robot_strength=?,
            pp_internal=?,pp_external=?,first_part_additional_setup=?,
-           setup_skirt_path_plan_sim_hrs=?,internal_notes=?,sort_order=?,
+           setup_skirt_path_plan_sim_hrs=?,shipping_cost_per_part=?,
+           manufacturing_method=?,other_mfg_internal=?,other_mfg_cost=?,other_mfg_cost_dup=?,
+           internal_notes=?,sort_order=?,
            updated_at=datetime('now')
            WHERE id=?""",
         (data.name, data.quantity_per_assembly, data.skirted_geometry_file,
@@ -274,7 +294,8 @@ def update_part(part_id: int, data: PartUpdate):
          data.sheet_type, data.parts_per_sheet, data.cost_per_sheet, data.ht_cost_per_part,
          data.unistrut, data.robot_strength, data.pp_internal, data.pp_external,
          data.first_part_additional_setup, data.setup_skirt_path_plan_sim_hrs,
-         data.internal_notes, data.sort_order, part_id),
+         data.shipping_cost_per_part, data.manufacturing_method, data.other_mfg_internal,
+         data.other_mfg_cost, data.other_mfg_cost_dup, data.internal_notes, data.sort_order, part_id),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM parts WHERE id=?", (part_id,)).fetchone()
@@ -323,6 +344,8 @@ def get_quote(pid: int):
         assembly_pp_external=p["assembly_pp_external"],
         assembly_first_part_setup=p["assembly_first_part_setup"],
         setup_splitting_hrs=p["setup_splitting_hrs"],
+        shipping_cost=p.get("shipping_cost", 0),
+        osp_margin=p.get("osp_margin", 0.10),
     )
 
     part_inputs = []
@@ -343,6 +366,12 @@ def get_quote(pid: int):
             pp_external=pt["pp_external"],
             first_part_additional_setup=pt["first_part_additional_setup"],
             setup_skirt_path_plan_sim_hrs=pt["setup_skirt_path_plan_sim_hrs"],
+            parts_per_sheet=pt.get("parts_per_sheet", 1) or 1,
+            shipping_cost_per_part=pt.get("shipping_cost_per_part", 0),
+            manufacturing_method=pt.get("manufacturing_method", "roboformed"),
+            other_mfg_internal=bool(pt.get("other_mfg_internal", 1)),
+            other_mfg_cost=pt.get("other_mfg_cost", 0),
+            other_mfg_cost_dup=pt.get("other_mfg_cost_dup", 0),
         ))
 
     result = calc_project_quote(proj_inputs, part_inputs)
@@ -358,11 +387,15 @@ def get_quote(pid: int):
             assembly_pp_external=p["assembly_pp_external"],
             assembly_first_part_setup=p["assembly_first_part_setup"],
             setup_splitting_hrs=p["setup_splitting_hrs"],
+            shipping_cost=p.get("shipping_cost", 0),
+            osp_margin=p.get("osp_margin", 0.10),
         )
         yr_result = calc_project_quote(yr_inputs, part_inputs)
         year_prices[yr] = {
-            "quoted_price": yr_result["quoted_price"],
-            "total_cost":   yr_result["total_cost"],
+            "quoted_price":         yr_result["quoted_price"],
+            "total_cost":           yr_result["total_cost"],
+            "first_assembly_price": yr_result["first_assembly_price"],
+            "dup_assembly_price":   yr_result["dup_assembly_price"],
         }
     result["year_prices"] = year_prices
 

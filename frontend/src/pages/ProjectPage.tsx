@@ -5,6 +5,7 @@ import type { Project, Part } from '../types'
 import ProjectForm from '../components/ProjectForm'
 import PartForm from '../components/PartForm'
 import QuoteView from '../components/QuoteView'
+import { partDisplayName } from '../utils/manufacturing'
 
 type Selection = { type: 'project' } | { type: 'part'; id: number } | { type: 'quote' }
 
@@ -179,7 +180,7 @@ export default function ProjectPage() {
             >
               <IconPart />
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {p.name}
+                {partDisplayName(p.name, p.manufacturing_method)}
               </span>
               <button
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--gray-400)', fontSize: 16, lineHeight: 1, borderRadius: 4, flexShrink: 0 }}

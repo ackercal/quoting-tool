@@ -10,6 +10,8 @@ export interface Project {
   assembly_pp_external: number;
   assembly_first_part_setup: number;
   setup_splitting_hrs: number;
+  shipping_cost: number;
+  osp_margin: number;
   internal_notes: string | null;
   is_active: number;
   parts_count?: number;
@@ -44,6 +46,11 @@ export interface Part {
   pp_external: number;
   first_part_additional_setup: number;
   setup_skirt_path_plan_sim_hrs: number;
+  shipping_cost_per_part: number;
+  manufacturing_method: string;
+  other_mfg_internal: number;
+  other_mfg_cost: number;
+  other_mfg_cost_dup: number;
   internal_notes: string | null;
   sort_order: number;
   created_at: string;
@@ -95,6 +102,8 @@ export interface PartCostDetail {
 export interface YearPrice {
   quoted_price: number;
   total_cost: number;
+  first_assembly_price: number;
+  dup_assembly_price: number;
 }
 
 export interface QuoteResult {
@@ -102,11 +111,14 @@ export interface QuoteResult {
   quoted_price: number;
   first_assembly_cost: number;
   dup_assembly_cost: number;
+  first_assembly_price: number;
+  dup_assembly_price: number;
   num_dup_assemblies: number;
   rpe_splitting: number;
   margin: number;
   part_details: PartCostDetail[];
   year_prices: Record<number, YearPrice>;
+  project_category_breakdown?: CategoryBreakdown;
   project: Project;
   parts: Part[];
 }

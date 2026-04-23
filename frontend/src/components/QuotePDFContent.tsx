@@ -1,4 +1,5 @@
 import type { QuoteResult, Part, PartCostDetail, YearPrice } from '../types'
+import { partDisplayName } from '../utils/manufacturing'
 
 interface Props { quote: QuoteResult }
 
@@ -117,10 +118,11 @@ function PartPriceChart({ parts, details, margin }: { parts: Part[]; details: Pa
 
 export default function QuotePDFContent({ quote }: Props) {
   const { project, parts, part_details, quoted_price,
-          first_assembly_cost, dup_assembly_cost, num_dup_assemblies, margin, year_prices } = quote
+          first_assembly_cost, dup_assembly_cost, first_assembly_price, dup_assembly_price,
+          num_dup_assemblies, margin, year_prices } = quote
 
-  const firstAssemblyPrice = first_assembly_cost / (1 - margin)
-  const dupAssemblyPrice   = dup_assembly_cost   / (1 - margin)
+  const firstAssemblyPrice = first_assembly_price ?? first_assembly_cost / (1 - margin)
+  const dupAssemblyPrice   = dup_assembly_price   ?? dup_assembly_cost   / (1 - margin)
 
   return (
     <div style={{ fontFamily: "'Roboto', sans-serif", background: '#fff', color: '#191919', width: 800, padding: 0 }}>
@@ -169,6 +171,45 @@ export default function QuotePDFContent({ quote }: Props) {
           ))}
         </div>
 
+        {/* ── Project category breakdown (price) ── */}
+        {quote.project_category_breakdown && (() => {
+          const m = 1 - margin
+          const cats: [string, number][] = [
+            ['Labor',      quote.project_category_breakdown.labor      / m],
+            ['Robot',      quote.project_category_breakdown.robot      / m],
+            ['Heat Treat', quote.project_category_breakdown.heat_treat / m],
+            ['Shipping',   quote.project_category_breakdown.shipping   / m],
+          ]
+          return (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12 }}>Price Breakdown by Category</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 28 }}>
+                <thead>
+                  <tr style={{ background: '#F5F5F5' }}>
+                    {['Category', 'Total Price', '% of Total'].map(h => (
+                      <th key={h} style={{ padding: '10px 16px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6B6B6B', textAlign: h === 'Category' ? 'left' : 'right', borderBottom: '2px solid #E8E8E8' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cats.map(([name, val]) => (
+                    <tr key={name}>
+                      <td style={{ padding: '9px 16px', fontSize: 13, borderBottom: '1px solid #eee' }}>{name}</td>
+                      <td style={{ padding: '9px 16px', fontSize: 13, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(val)}</td>
+                      <td style={{ padding: '9px 16px', fontSize: 13, textAlign: 'right', color: '#6B6B6B', borderBottom: '1px solid #eee' }}>{quoted_price > 0 ? `${((val / quoted_price) * 100).toFixed(1)}%` : '—'}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#F5F5F5' }}>
+                    <td style={{ padding: '9px 16px', fontSize: 13, fontWeight: 700, borderBottom: '1px solid #E8E8E8' }}>Total</td>
+                    <td style={{ padding: '9px 16px', fontSize: 13, fontWeight: 700, textAlign: 'right', color: '#FF9900', borderBottom: '1px solid #E8E8E8' }}>{$(quoted_price)}</td>
+                    <td style={{ padding: '9px 16px', fontSize: 13, textAlign: 'right', borderBottom: '1px solid #E8E8E8' }}>100%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )
+        })()}
+
         {/* ── Price per part chart ── */}
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12 }}>Price per Part — First Part vs Duplicate</div>
         <div style={{ border: '1px solid #E8E8E8', borderRadius: 8, padding: '16px 0 4px', marginBottom: 28 }}>
@@ -191,7 +232,7 @@ export default function QuotePDFContent({ quote }: Props) {
               if (!d) return null
               return (
                 <tr key={part.id}>
-                  <td style={{ padding: '10px 16px', fontSize: 13, fontWeight: 500, borderBottom: '1px solid #eee' }}>{part.name}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 13, fontWeight: 500, borderBottom: '1px solid #eee' }}>{partDisplayName(part.name, part.manufacturing_method)}</td>
                   <td style={{ padding: '10px 16px', fontSize: 13, textAlign: 'right', color: '#6B6B6B', borderBottom: '1px solid #eee' }}>{part.quantity_per_assembly}</td>
                   <td style={{ padding: '10px 16px', fontSize: 13, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(d.first_assembly / (1 - margin))}</td>
                   <td style={{ padding: '10px 16px', fontSize: 13, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(d.dup_assembly / (1 - margin))}</td>
@@ -200,55 +241,6 @@ export default function QuotePDFContent({ quote }: Props) {
             })}
           </tbody>
         </table>
-
-        {/* ── Category breakdown per part ── */}
-        {part_details.some(d => d.first_category_breakdown) && (
-          <>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12, marginTop: 28 }}>Price Breakdown by Category</div>
-            {parts.map((part, i) => {
-              const d = part_details[i]
-              if (!d?.first_category_breakdown) return null
-              const fc = d.first_category_breakdown
-              const dc = d.dup_category_breakdown
-              const m = 1 - margin
-              const categories: [string, number, number][] = [
-                ['Labor',      fc.labor      / m, dc.labor      / m],
-                ['Robot',      fc.robot      / m, dc.robot      / m],
-                ['Materials',  fc.materials  / m, dc.materials  / m],
-                ['Heat Treat', fc.heat_treat / m, dc.heat_treat / m],
-                ['Shipping',   fc.shipping   / m, dc.shipping   / m],
-              ]
-              return (
-                <div key={part.id} style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#6B6B6B', marginBottom: 6 }}>{part.name}</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: '#F5F5F5' }}>
-                        {['Category', 'First Part Price', 'Duplicate Part Price'].map(h => (
-                          <th key={h} style={{ padding: '8px 16px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6B6B6B', textAlign: h === 'Category' ? 'left' : 'right', borderBottom: '2px solid #E8E8E8' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {categories.map(([name, fp, dp]) => (
-                        <tr key={name}>
-                          <td style={{ padding: '7px 16px', fontSize: 12, borderBottom: '1px solid #eee' }}>{name}</td>
-                          <td style={{ padding: '7px 16px', fontSize: 12, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(fp)}</td>
-                          <td style={{ padding: '7px 16px', fontSize: 12, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(dp)}</td>
-                        </tr>
-                      ))}
-                      <tr style={{ background: '#F5F5F5' }}>
-                        <td style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, borderBottom: '1px solid #E8E8E8' }}>Total</td>
-                        <td style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #E8E8E8' }}>{$(d.first_part_cost / m)}</td>
-                        <td style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #E8E8E8' }}>{$(d.dup_part_cost / m)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )
-            })}
-          </>
-        )}
 
         {/* ── Total ── */}
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>

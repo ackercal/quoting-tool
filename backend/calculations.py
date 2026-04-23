@@ -12,9 +12,9 @@ HOURLY_RATES: dict[str, dict[int, float]] = {
     "Tech":      {2026: 52.52168831168831, 2027: 52.52168831168831, 2028: 52.52168831168831},
     "Purchaser": {2026: 77.6948051948052,  2027: 77.6948051948052,  2028: 77.6948051948052},
     "PM":        {2026: 84.1693722943723,  2027: 84.1693722943723,  2028: 84.1693722943723},
-    "Small":     {2026: 17.680921052631582, 2027: 17.680921052631582, 2028: 17.680921052631582},
-    "Medium":    {2026: 29.69663742690059,  2027: 29.69663742690059,  2028: 29.69663742690059},
-    "Large":     {2026: 45.68713450292399,  2027: 45.68713450292399,  2028: 45.68713450292399},
+    "Small":     {2026: 24.42, 2027: 24.42, 2028: 24.42},
+    "Medium":    {2026: 37.57, 2027: 37.57, 2028: 37.57},
+    "Large":     {2026: 55.07, 2027: 55.07, 2028: 55.07},
 }
 
 # ── Forecast: Robot improvement factors (B44:D48) ─────────────────────────────
@@ -137,6 +137,12 @@ class PartInputs:
     pp_external: float
     first_part_additional_setup: float
     setup_skirt_path_plan_sim_hrs: float
+    parts_per_sheet: int = 1
+    shipping_cost_per_part: float = 0
+    manufacturing_method: str = "roboformed"
+    other_mfg_internal: bool = True
+    other_mfg_cost: float = 0
+    other_mfg_cost_dup: float = 0
 
 
 def _op_labor_robot(op: str, robot_hrs: float, strength: str, year: int) -> tuple[float, float]:
@@ -192,7 +198,7 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
         + (if_f_l + if_s_l) * part.est_if_procedures
         + fs_l + fc_l
         + rpe_setup + purchaser_setup + pm_setup
-        + unistrut_cost + purchaser_ovhd + pm_ovhd
+        + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd
         + part.pp_internal + part.pp_external + part.first_part_additional_setup
     )
     cat_robot = (
@@ -219,9 +225,9 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
         "category_breakdown": {
             "labor":     cat_labor,
             "robot":     cat_robot,
-            "materials": part.cost_per_sheet * (part.est_pre_if_procedures + part.est_if_procedures),
+            "materials": (part.cost_per_sheet / part.parts_per_sheet) * (part.est_pre_if_procedures + part.est_if_procedures),
             "heat_treat": part.ht_cost_per_part,
-            "shipping":  prep_shipping,
+            "shipping":  part.shipping_cost_per_part,
         },
     }
 
@@ -255,16 +261,36 @@ def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
             "post_processing":     pp_dup,
         },
         "category_breakdown": {
-            "labor":     df_l + ds_l * 2 + dc_l + unistrut_cost + purchaser_ovhd + pm_ovhd + part.pp_internal + part.pp_external,
+            "labor":     df_l + ds_l * 2 + dc_l + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd + part.pp_internal + part.pp_external,
             "robot":     df_r + ds_r * 2 + dc_r,
-            "materials": part.cost_per_sheet,
+            "materials": part.cost_per_sheet / part.parts_per_sheet,
             "heat_treat": part.ht_cost_per_part,
-            "shipping":  prep_shipping,
+            "shipping":  part.shipping_cost_per_part,
         },
     }
 
 
 def calc_part_assembly_costs(part: PartInputs, year: int) -> dict:
+    if part.manufacturing_method != "roboformed":
+        fc  = part.other_mfg_cost
+        dc  = part.other_mfg_cost_dup
+        qty = part.quantity_per_assembly
+        def _cat(cost):
+            if part.other_mfg_internal:
+                return {"labor": cost, "robot": 0.0, "materials": 0.0, "heat_treat": 0.0, "shipping": 0.0}
+            else:
+                return {"labor": 0.0, "robot": 0.0, "materials": cost, "heat_treat": 0.0, "shipping": 0.0}
+        return {
+            "first_assembly":  fc + dc * (qty - 1),
+            "dup_assembly":    dc * qty,
+            "first_part_cost": fc,
+            "dup_part_cost":   dc,
+            "first_breakdown": {},
+            "dup_breakdown":   {},
+            "first_category_breakdown": _cat(fc),
+            "dup_category_breakdown":   _cat(dc),
+        }
+
     first = calc_first_part_cost(part, year)
     dup   = calc_duplicate_part_cost(part, year)
     return {
@@ -290,6 +316,8 @@ class ProjectInputs:
     assembly_pp_external: float
     assembly_first_part_setup: float
     setup_splitting_hrs: float
+    shipping_cost: float = 0
+    osp_margin: float = 0.10
 
 
 def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
@@ -314,18 +342,56 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
     )
 
     n_dup      = project.quantity_of_assemblies - 1
-    total_cost = first_assembly_total + dup_assembly_total * n_dup
+    total_cost = first_assembly_total + dup_assembly_total * n_dup + project.shipping_cost
     margin     = project.internal_margin
-    quoted     = total_cost / (1.0 - margin) if margin < 1.0 else total_cost
+    osp_m      = project.osp_margin
+
+    # ── Project-level category breakdown ─────────────────────────────────────
+    proj_cat: dict[str, float] = {"labor": 0.0, "robot": 0.0, "materials": 0.0, "heat_treat": 0.0, "shipping": 0.0}
+    for i, p in enumerate(parts):
+        fc = part_costs[i]["first_category_breakdown"]
+        dc = part_costs[i]["dup_category_breakdown"]
+        qty = p.quantity_per_assembly
+        for cat in proj_cat:
+            proj_cat[cat] += fc[cat] + dc[cat] * (qty - 1) + dc[cat] * qty * n_dup
+    proj_cat["labor"] += (
+        rpe_splitting
+        + project.assembly_first_part_setup
+        + project.assembly_pp_internal * project.quantity_of_assemblies
+        + project.assembly_pp_external * project.quantity_of_assemblies
+    )
+    proj_cat["shipping"] += project.shipping_cost
+
+    # ── OSP vs internal price split ───────────────────────────────────────────
+    external_pp_total = (
+        sum(p.pp_external * p.quantity_per_assembly for p in parts) * project.quantity_of_assemblies
+        + project.assembly_pp_external * project.quantity_of_assemblies
+    )
+    osp_cost      = proj_cat["materials"] + proj_cat["heat_treat"] + proj_cat["shipping"] + external_pp_total
+    internal_cost = total_cost - osp_cost
+    quoted = (
+        (internal_cost / (1.0 - margin) if margin < 1.0 else internal_cost)
+        + (osp_cost / (1.0 - osp_m) if osp_m < 1.0 else osp_cost)
+    )
+
+    if total_cost > 0:
+        first_assembly_price = quoted * first_assembly_total / total_cost
+        dup_assembly_price   = quoted * dup_assembly_total   / total_cost
+    else:
+        first_assembly_price = dup_assembly_price = 0.0
 
     return {
-        "total_cost":          total_cost,
-        "quoted_price":        quoted,
-        "first_assembly_cost": first_assembly_total,
-        "dup_assembly_cost":   dup_assembly_total,
-        "num_dup_assemblies":  n_dup,
-        "rpe_splitting":       rpe_splitting,
-        "margin":              margin,
-        "part_details":        part_costs,
-        "robot_improvement":   _robot_improvement(year),
+        "total_cost":                 total_cost,
+        "quoted_price":               quoted,
+        "first_assembly_cost":        first_assembly_total,
+        "dup_assembly_cost":          dup_assembly_total,
+        "first_assembly_price":       first_assembly_price,
+        "dup_assembly_price":         dup_assembly_price,
+        "num_dup_assemblies":         n_dup,
+        "rpe_splitting":              rpe_splitting,
+        "margin":                     margin,
+        "osp_margin":                 osp_m,
+        "part_details":               part_costs,
+        "robot_improvement":          _robot_improvement(year),
+        "project_category_breakdown": proj_cat,
     }

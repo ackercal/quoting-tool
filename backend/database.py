@@ -29,6 +29,8 @@ def init_db():
         assembly_pp_external    REAL    NOT NULL DEFAULT 0,
         assembly_first_part_setup REAL  NOT NULL DEFAULT 0,
         setup_splitting_hrs     REAL    NOT NULL DEFAULT 0,
+        shipping_cost           REAL    NOT NULL DEFAULT 0,
+        osp_margin              REAL    NOT NULL DEFAULT 0.10,
         internal_notes          TEXT,
         is_active               INTEGER NOT NULL DEFAULT 1,
         created_at              TEXT    DEFAULT (datetime('now')),
@@ -68,6 +70,13 @@ def init_db():
         first_part_additional_setup REAL    NOT NULL DEFAULT 0,
         -- setup
         setup_skirt_path_plan_sim_hrs REAL  NOT NULL DEFAULT 4,
+        -- shipping
+        shipping_cost_per_part      REAL    NOT NULL DEFAULT 0,
+        -- manufacturing method
+        manufacturing_method        TEXT    NOT NULL DEFAULT 'roboformed',
+        other_mfg_internal          INTEGER NOT NULL DEFAULT 1,
+        other_mfg_cost              REAL    NOT NULL DEFAULT 0,
+        other_mfg_cost_dup          REAL    NOT NULL DEFAULT 0,
         internal_notes              TEXT,
         sort_order                  INTEGER NOT NULL DEFAULT 0,
         created_at                  TEXT    DEFAULT (datetime('now')),
@@ -82,11 +91,21 @@ def init_db():
     );
     """)
 
-    # Migrate existing DBs that don't have is_active yet
-    try:
-        c.execute("ALTER TABLE projects ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-    except Exception:
-        pass  # column already exists
+    # Migrate existing DBs
+    for migration in [
+        "ALTER TABLE projects ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE projects ADD COLUMN shipping_cost REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE projects ADD COLUMN osp_margin REAL NOT NULL DEFAULT 0.10",
+        "ALTER TABLE parts ADD COLUMN shipping_cost_per_part REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE parts ADD COLUMN manufacturing_method TEXT NOT NULL DEFAULT 'roboformed'",
+        "ALTER TABLE parts ADD COLUMN other_mfg_internal INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE parts ADD COLUMN other_mfg_cost REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE parts ADD COLUMN other_mfg_cost_dup REAL NOT NULL DEFAULT 0",
+    ]:
+        try:
+            c.execute(migration)
+        except Exception:
+            pass
 
     _seed_constants(c)
     conn.commit()
@@ -102,9 +121,9 @@ def _seed_constants(c):
         ("rate_Tech",      52.52168831168831, "Technician hourly rate",      "rates"),
         ("rate_Purchaser", 77.6948051948052,  "Purchaser hourly rate",       "rates"),
         ("rate_PM",        84.1693722943723,  "Project Manager hourly rate", "rates"),
-        ("rate_Small",     17.680921052631582,"Small robot hourly rate",     "rates"),
-        ("rate_Medium",    29.69663742690059, "Medium robot hourly rate",    "rates"),
-        ("rate_Large",     45.68713450292399, "Large robot hourly rate",     "rates"),
+        ("rate_Small",     24.42, "Small robot hourly rate",     "rates"),
+        ("rate_Medium",    37.57, "Medium robot hourly rate",    "rates"),
+        ("rate_Large",     55.07, "Large robot hourly rate",     "rates"),
         # Robot improvement multipliers (applied to user's current robot time estimate)
         ("robot_improvement_2026", 1.0,    "Robot time improvement factor 2026", "misc"),
         ("robot_improvement_2027", 0.65,   "Robot time improvement factor 2027", "misc"),

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api/client'
 import type { Project } from '../types'
+import NumInput from './NumInput'
 
 interface Props {
   project: Project
@@ -43,16 +44,16 @@ export default function ProjectForm({ project, onUpdate }: Props) {
           <input value={form.name} onChange={e => set('name', e.target.value)} />
         </div>
         <div className="field">
-          <label>Material Type</label>
-          <select value={form.material_type || ''} onChange={e => set('material_type', e.target.value || null)}>
-            <option value="">Select…</option>
-            {MATERIAL_TYPES.map(t => <option key={t}>{t}</option>)}
+          <label>Status</label>
+          <select value={form.is_active} onChange={e => set('is_active', parseInt(e.target.value))}>
+            <option value={1}>Active</option>
+            <option value={0}>Inactive</option>
           </select>
         </div>
         <div className="field">
           <label>Quantity of Assemblies to Deliver <span className="required">*</span></label>
-          <input type="number" min="1" value={form.quantity_of_assemblies}
-            onChange={e => set('quantity_of_assemblies', parseInt(e.target.value) || 1)} />
+          <NumInput min={1} value={form.quantity_of_assemblies}
+            onChange={v => set('quantity_of_assemblies', Math.max(1, Math.round(v)))} />
         </div>
         <div className="field">
           <label>Year of Execution <span className="required">*</span></label>
@@ -64,53 +65,61 @@ export default function ProjectForm({ project, onUpdate }: Props) {
           )}
         </div>
         <div className="field">
-          <label>Internal Margin <span className="required">*</span></label>
-          <input type="number" min="0" max="0.99" step="0.01"
-            value={form.internal_margin}
-            onChange={e => set('internal_margin', parseFloat(e.target.value) || 0)} />
-          <div className="field-hint">e.g. 0.70 = 70% margin → price = cost / (1 − margin)</div>
+          <label>Internal Margin (%) <span className="required">*</span></label>
+          <NumInput min={0} max={99} step={1} value={Math.round(form.internal_margin * 100)}
+            onChange={v => set('internal_margin', v / 100)} />
+          <div className="field-hint">70% recommended</div>
         </div>
         <div className="field">
-          <label>Status</label>
-          <select value={form.is_active} onChange={e => set('is_active', parseInt(e.target.value))}>
-            <option value={1}>Active</option>
-            <option value={0}>Inactive</option>
-          </select>
+          <label>OSP Margin (%) <span className="required">*</span></label>
+          <NumInput min={0} max={99} step={1} value={Math.round((form.osp_margin ?? 0.10) * 100)}
+            onChange={v => set('osp_margin', v / 100)} />
+          <div className="field-hint">Outside Service Provider — 10% recommended</div>
         </div>
       </div>
 
 <div className="section-heading">Assembly Post Processing Cost (sanding, welding, QC, etc.)</div>
       <div className="form-grid three">
         <div className="field">
-          <label>Production: Internal ($)</label>
+          <label>Internal Cost per Assembly ($)</label>
           <div className="field-dollar">
-            <input type="number" min="0" step="0.01" value={form.assembly_pp_internal}
-              onChange={e => set('assembly_pp_internal', parseFloat(e.target.value) || 0)} />
+            <NumInput min={0} step={0.01} value={form.assembly_pp_internal}
+              onChange={v => set('assembly_pp_internal', v)} />
           </div>
         </div>
         <div className="field">
-          <label>Production: External ($)</label>
+          <label>External Cost per Assembly ($)</label>
           <div className="field-dollar">
-            <input type="number" min="0" step="0.01" value={form.assembly_pp_external}
-              onChange={e => set('assembly_pp_external', parseFloat(e.target.value) || 0)} />
+            <NumInput min={0} step={0.01} value={form.assembly_pp_external}
+              onChange={v => set('assembly_pp_external', v)} />
           </div>
+          <div className="field-hint">OSP</div>
         </div>
         <div className="field">
-          <label>First Part: Additional Cost for Set Up ($)</label>
+          <label>Additional Cost for First Part Setup ($)</label>
           <div className="field-dollar">
-            <input type="number" min="0" step="0.01" value={form.assembly_first_part_setup}
-              onChange={e => set('assembly_first_part_setup', parseFloat(e.target.value) || 0)} />
+            <NumInput min={0} step={0.01} value={form.assembly_first_part_setup}
+              onChange={v => set('assembly_first_part_setup', v)} />
           </div>
+          <div className="field-hint">e.g. welding jigs</div>
         </div>
       </div>
 
       <div className="section-heading">Other</div>
-      <div className="form-grid single" style={{ maxWidth: 320 }}>
+      <div className="form-grid" style={{ maxWidth: 640 }}>
         <div className="field">
           <label>Set Up – Splitting / DFM Analysis (hrs)</label>
-          <input type="number" min="0" step="0.25" value={form.setup_splitting_hrs}
-            onChange={e => set('setup_splitting_hrs', parseFloat(e.target.value) || 0)} />
+          <NumInput min={0} step={0.25} value={form.setup_splitting_hrs}
+            onChange={v => set('setup_splitting_hrs', v)} />
           <div className="field-hint">RPE time to split CAD into formable surfaces</div>
+        </div>
+        <div className="field">
+          <label>Shipping Cost ($)</label>
+          <div className="field-dollar">
+            <NumInput min={0} step={0.01} value={form.shipping_cost}
+              onChange={v => set('shipping_cost', v)} />
+          </div>
+          <div className="field-hint">Delivering project to the customer</div>
         </div>
       </div>
 
