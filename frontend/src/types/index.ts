@@ -86,6 +86,7 @@ export interface CategoryBreakdown {
   materials: number;
   heat_treat: number;
   shipping: number;
+  non_roboformed: number;
 }
 
 export interface PartCostDetail {

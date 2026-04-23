@@ -223,11 +223,12 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
             "final_scan_cut_scan": scan_op + cut_op,
         },
         "category_breakdown": {
-            "labor":     cat_labor,
-            "robot":     cat_robot,
-            "materials": (part.cost_per_sheet / part.parts_per_sheet) * (part.est_pre_if_procedures + part.est_if_procedures),
-            "heat_treat": part.ht_cost_per_part,
-            "shipping":  part.shipping_cost_per_part,
+            "labor":          cat_labor,
+            "robot":          cat_robot,
+            "materials":      (part.cost_per_sheet / part.parts_per_sheet) * (part.est_pre_if_procedures + part.est_if_procedures),
+            "heat_treat":     part.ht_cost_per_part,
+            "shipping":       part.shipping_cost_per_part,
+            "non_roboformed": 0.0,
         },
     }
 
@@ -261,11 +262,12 @@ def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
             "post_processing":     pp_dup,
         },
         "category_breakdown": {
-            "labor":     df_l + ds_l * 2 + dc_l + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd + part.pp_internal + part.pp_external,
-            "robot":     df_r + ds_r * 2 + dc_r,
-            "materials": part.cost_per_sheet / part.parts_per_sheet,
-            "heat_treat": part.ht_cost_per_part,
-            "shipping":  part.shipping_cost_per_part,
+            "labor":          df_l + ds_l * 2 + dc_l + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd + part.pp_internal + part.pp_external,
+            "robot":          df_r + ds_r * 2 + dc_r,
+            "materials":      part.cost_per_sheet / part.parts_per_sheet,
+            "heat_treat":     part.ht_cost_per_part,
+            "shipping":       part.shipping_cost_per_part,
+            "non_roboformed": 0.0,
         },
     }
 
@@ -276,10 +278,7 @@ def calc_part_assembly_costs(part: PartInputs, year: int) -> dict:
         dc  = part.other_mfg_cost_dup
         qty = part.quantity_per_assembly
         def _cat(cost):
-            if part.other_mfg_internal:
-                return {"labor": cost, "robot": 0.0, "materials": 0.0, "heat_treat": 0.0, "shipping": 0.0}
-            else:
-                return {"labor": 0.0, "robot": 0.0, "materials": cost, "heat_treat": 0.0, "shipping": 0.0}
+            return {"labor": 0.0, "robot": 0.0, "materials": 0.0, "heat_treat": 0.0, "shipping": 0.0, "non_roboformed": cost}
         return {
             "first_assembly":  fc + dc * (qty - 1),
             "dup_assembly":    dc * qty,
@@ -347,7 +346,7 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
     osp_m      = project.osp_margin
 
     # ── Project-level category breakdown ─────────────────────────────────────
-    proj_cat: dict[str, float] = {"labor": 0.0, "robot": 0.0, "materials": 0.0, "heat_treat": 0.0, "shipping": 0.0}
+    proj_cat: dict[str, float] = {"labor": 0.0, "robot": 0.0, "materials": 0.0, "heat_treat": 0.0, "shipping": 0.0, "non_roboformed": 0.0}
     for i, p in enumerate(parts):
         fc = part_costs[i]["first_category_breakdown"]
         dc = part_costs[i]["dup_category_breakdown"]
@@ -367,7 +366,14 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
         sum(p.pp_external * p.quantity_per_assembly for p in parts) * project.quantity_of_assemblies
         + project.assembly_pp_external * project.quantity_of_assemblies
     )
-    osp_cost      = proj_cat["materials"] + proj_cat["heat_treat"] + proj_cat["shipping"] + external_pp_total
+    # External non-roboformed parts are OSP-priced (their cost is in non_roboformed, not materials)
+    ext_non_roboformed = sum(
+        part_costs[i]["first_part_cost"] + part_costs[i]["dup_part_cost"] * (p.quantity_per_assembly - 1)
+        + part_costs[i]["dup_part_cost"] * p.quantity_per_assembly * n_dup
+        for i, p in enumerate(parts)
+        if p.manufacturing_method != "roboformed" and not p.other_mfg_internal
+    )
+    osp_cost      = proj_cat["materials"] + proj_cat["heat_treat"] + proj_cat["shipping"] + external_pp_total + ext_non_roboformed
     internal_cost = total_cost - osp_cost
     quoted = (
         (internal_cost / (1.0 - margin) if margin < 1.0 else internal_cost)

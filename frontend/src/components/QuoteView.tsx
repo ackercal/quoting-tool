@@ -265,11 +265,12 @@ function BreakdownTable({ label, detail, isFirst }: { label: string; detail: Par
 
 function CategoryBreakdownTable({ label, breakdown, total, totalLabel = 'Total per Part' }: { label: string; breakdown: CategoryBreakdown; total: number; totalLabel?: string }) {
   const rows: [string, number][] = [
-    ['Labor',      breakdown.labor],
-    ['Robot',      breakdown.robot],
-    ['Heat Treat', breakdown.heat_treat],
-    ['Shipping',   breakdown.shipping],
-  ]
+    ['Labor',              breakdown.labor],
+    ['Robot',              breakdown.robot],
+    ['Heat Treat',         breakdown.heat_treat],
+    ['Shipping',           breakdown.shipping],
+    ['Non-Roboformed Parts', breakdown.non_roboformed],
+  ].filter(([, val]) => (val as number) > 0) as [string, number][]
   return (
     <table className="quote-table">
       <thead>

@@ -175,11 +175,12 @@ export default function QuotePDFContent({ quote }: Props) {
         {quote.project_category_breakdown && (() => {
           const m = 1 - margin
           const cats: [string, number][] = [
-            ['Labor',      quote.project_category_breakdown.labor      / m],
-            ['Robot',      quote.project_category_breakdown.robot      / m],
-            ['Heat Treat', quote.project_category_breakdown.heat_treat / m],
-            ['Shipping',   quote.project_category_breakdown.shipping   / m],
-          ]
+            ['Labor',                quote.project_category_breakdown.labor           / m],
+            ['Robot',                quote.project_category_breakdown.robot           / m],
+            ['Heat Treat',           quote.project_category_breakdown.heat_treat      / m],
+            ['Shipping',             quote.project_category_breakdown.shipping        / m],
+            ['Non-Roboformed Parts', quote.project_category_breakdown.non_roboformed  / m],
+          ].filter(([, val]) => (val as number) > 0) as [string, number][]
           return (
             <>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12 }}>Price Breakdown by Category</div>
