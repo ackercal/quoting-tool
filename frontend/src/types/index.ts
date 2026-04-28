@@ -12,6 +12,7 @@ export interface Project {
   setup_splitting_hrs: number;
   shipping_cost: number;
   osp_margin: number;
+  labor_constants: string;
   internal_notes: string | null;
   is_active: number;
   parts_count?: number;

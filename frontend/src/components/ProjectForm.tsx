@@ -105,6 +105,18 @@ export default function ProjectForm({ project, onUpdate }: Props) {
         </div>
       </div>
 
+      <div className="section-heading">Labor Constants</div>
+      <div className="form-grid" style={{ maxWidth: 640 }}>
+        <div className="field span2">
+          <label>Labor Hours Database <span className="required">*</span></label>
+          <select value={form.labor_constants ?? 'formed_parts'} onChange={e => set('labor_constants', e.target.value)}>
+            <option value="formed_parts">Formed Parts</option>
+            <option value="custom_auto">Custom Auto</option>
+          </select>
+          <div className="field-hint">Use Formed Parts unless this is a Custom Auto project — Custom Auto uses lower labor hour estimates per step to match their specific process.</div>
+        </div>
+      </div>
+
       <div className="section-heading">Other</div>
       <div className="form-grid" style={{ maxWidth: 640 }}>
         <div className="field">

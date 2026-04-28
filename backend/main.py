@@ -11,6 +11,7 @@ from calculations import (
     PartInputs,
     HOURLY_RATES,
     LABOR_HOURS,
+    LABOR_HOURS_SETS,
     UNISTRUT_TECH_HRS,
     PALLETIZE_TECH_HRS,
 )
@@ -48,6 +49,7 @@ class ProjectCreate(BaseModel):
     setup_splitting_hrs: float = 0
     shipping_cost: float = 0
     osp_margin: float = 0.10
+    labor_constants: str = "formed_parts"
     internal_notes: Optional[str] = None
     is_active: int = 1
 
@@ -154,6 +156,7 @@ def list_projects():
                     other_mfg_internal=bool(pt.get("other_mfg_internal", 1)),
                     other_mfg_cost=pt.get("other_mfg_cost", 0),
                     other_mfg_cost_dup=pt.get("other_mfg_cost_dup", 0),
+                    labor_constants=proj.get("labor_constants", "formed_parts"),
                 ) for pt in parts_data]
                 quote = calc_project_quote(proj_inputs, part_inputs)
                 proj["quoted_price"] = quote["quoted_price"]
@@ -173,12 +176,14 @@ def create_project(data: ProjectCreate):
         """INSERT INTO projects
            (name,quantity_of_assemblies,material_type,ht_type,internal_margin,
             year_of_execution,assembly_pp_internal,assembly_pp_external,
-            assembly_first_part_setup,setup_splitting_hrs,shipping_cost,osp_margin,internal_notes,is_active)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            assembly_first_part_setup,setup_splitting_hrs,shipping_cost,osp_margin,
+            labor_constants,internal_notes,is_active)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
          data.internal_margin, data.year_of_execution, data.assembly_pp_internal,
          data.assembly_pp_external, data.assembly_first_part_setup,
-         data.setup_splitting_hrs, data.shipping_cost, data.osp_margin, data.internal_notes, data.is_active),
+         data.setup_splitting_hrs, data.shipping_cost, data.osp_margin,
+         data.labor_constants, data.internal_notes, data.is_active),
     )
     pid = c.lastrowid
     conn.commit()
@@ -209,13 +214,15 @@ def update_project(pid: int, data: ProjectUpdate):
            name=?,quantity_of_assemblies=?,material_type=?,ht_type=?,
            internal_margin=?,year_of_execution=?,assembly_pp_internal=?,
            assembly_pp_external=?,assembly_first_part_setup=?,
-           setup_splitting_hrs=?,shipping_cost=?,osp_margin=?,internal_notes=?,is_active=?,
+           setup_splitting_hrs=?,shipping_cost=?,osp_margin=?,
+           labor_constants=?,internal_notes=?,is_active=?,
            updated_at=datetime('now')
            WHERE id=?""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
          data.internal_margin, data.year_of_execution, data.assembly_pp_internal,
          data.assembly_pp_external, data.assembly_first_part_setup,
-         data.setup_splitting_hrs, data.shipping_cost, data.osp_margin, data.internal_notes, data.is_active, pid),
+         data.setup_splitting_hrs, data.shipping_cost, data.osp_margin,
+         data.labor_constants, data.internal_notes, data.is_active, pid),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
@@ -350,6 +357,7 @@ def get_quote(pid: int):
 
     part_inputs = []
     parts_data = [row_to_dict(r) for r in parts_rows]
+    lc = p.get("labor_constants", "formed_parts") or "formed_parts"
     for pt in parts_data:
         part_inputs.append(PartInputs(
             quantity_per_assembly=pt["quantity_per_assembly"],
@@ -372,6 +380,7 @@ def get_quote(pid: int):
             other_mfg_internal=bool(pt.get("other_mfg_internal", 1)),
             other_mfg_cost=pt.get("other_mfg_cost", 0),
             other_mfg_cost_dup=pt.get("other_mfg_cost_dup", 0),
+            labor_constants=lc,
         ))
 
     result = calc_project_quote(proj_inputs, part_inputs)
@@ -412,6 +421,12 @@ def list_constants():
     rows = conn.execute("SELECT * FROM constants ORDER BY category, key").fetchall()
     conn.close()
     return [row_to_dict(r) for r in rows]
+
+
+@app.get("/constants/labor-sets")
+def get_labor_sets():
+    """Returns both labor hour constant sets for display in dev tools."""
+    return LABOR_HOURS_SETS
 
 
 @app.put("/constants/{key}")

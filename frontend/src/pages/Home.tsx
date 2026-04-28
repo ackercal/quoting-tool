@@ -194,6 +194,7 @@ export default function Home() {
   const [section, setSection]   = useState<Section>(initialSection)
   const [projects, setProjects] = useState<Project[]>([])
   const [constants, setConstants] = useState<Constant[]>([])
+  const [laborSets, setLaborSets] = useState<Record<string, Record<string, Record<number, Record<string, number>>>> | null>(null)
   const [loading, setLoading]   = useState(true)
   const [showNew, setShowNew]   = useState(false)
   const [newName, setNewName]   = useState('')
@@ -202,8 +203,8 @@ export default function Home() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    Promise.all([api.listProjects(), api.listConstants()])
-      .then(([p, c]) => { setProjects(p); setConstants(c) })
+    Promise.all([api.listProjects(), api.listConstants(), api.getLaborSets()])
+      .then(([p, c, ls]) => { setProjects(p); setConstants(c); setLaborSets(ls) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -241,6 +242,15 @@ export default function Home() {
             Projects
           </div>
           <div
+            className={`sidebar-item${section === 'devtools' ? ' active' : ''}`}
+            onClick={() => setSection('devtools')}
+          >
+            <svg className="sidebar-item-icon" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            Process Constants
+          </div>
+          <div
             className={`sidebar-item${section === 'helpers' ? ' active' : ''}`}
             onClick={() => setSection('helpers')}
           >
@@ -249,6 +259,7 @@ export default function Home() {
             </svg>
             Estimation Context
           </div>
+          <div className="sidebar-divider" style={{ marginTop: 'auto' }} />
           <div
             className={`sidebar-item${section === 'readme' ? ' active' : ''}`}
             onClick={() => setSection('readme')}
@@ -257,16 +268,6 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 4H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M13 4h4v4M10 10l7-7" />
             </svg>
             Read Me
-          </div>
-          <div className="sidebar-divider" style={{ marginTop: 'auto' }} />
-          <div
-            className={`sidebar-item${section === 'devtools' ? ' active' : ''}`}
-            onClick={() => setSection('devtools')}
-          >
-            <svg className="sidebar-item-icon" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-            </svg>
-            Dev Tools
           </div>
         </nav>
       </div>
@@ -359,7 +360,7 @@ export default function Home() {
           <div className="home-page">
             <div className="home-header">
               <div>
-                <div className="home-title">Dev Tools</div>
+                <div className="home-title">Process Constants</div>
                 <div className="home-subtitle">Read-only view of stored data</div>
               </div>
             </div>
@@ -403,107 +404,130 @@ export default function Home() {
 
             {/* Constants Database */}
             <div className="section-heading">Constants Database</div>
-            {!loading && (() => {
-              const yearGrid = buildYearGrid(constants)
-              const flat     = flatConstants(constants)
+            {!loading && laborSets && (() => {
+              const flat  = flatConstants(constants)
+              const getC  = (key: string)                => constants.find(c => c.key === key)?.value ?? 0
+              const getYr = (prefix: string, yr: number) => constants.find(c => c.key === `${prefix}_${yr}`)?.value ?? 0
+
+              const OPS = ['pre_if_forming', 'if_forming', 'dup_forming', 'scanning', 'cutting']
+              const OP_LABELS: Record<string, string> = {
+                pre_if_forming: 'Pre-IF Forming',
+                if_forming:     'IF Forming',
+                dup_forming:    'Dup Forming',
+                scanning:       'Scanning',
+                cutting:        'Cutting',
+              }
+              const ROLES = ['RPE', 'ME', 'Tech']
+              const SET_LABELS: Record<string, string> = { formed_parts: 'Formed Parts', custom_auto: 'Custom Auto' }
+
+              const divider = (label: string) => (
+                <tr key={label}>
+                  <td colSpan={2 + YEARS.length} style={{ background: 'var(--gray-100)', fontSize: 10, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', padding: '6px 16px' }}>
+                    {label}
+                  </td>
+                </tr>
+              )
+
               return (
                 <>
-                  {/* Year-keyed grid (labor hours) */}
-                  {yearGrid.length > 0 && (
-                    <div style={{ marginBottom: 24 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-                        Labor Hours Per Operation
-                      </div>
-                      <div className="quote-section">
-                        <table className="quote-table">
-                          <thead>
-                            <tr>
-                              <th>Operation · Role</th>
-                              {YEARS.map(y => <th key={y} className="right">{y}</th>)}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {yearGrid.map(row => (
-                              <tr key={row.base}>
-                                <td>{label(row.base)}</td>
+                  {Object.entries(laborSets).map(([setKey, setData]) => {
+                    const halvd = setKey === 'custom_auto'
+                    const yv = (prefix: string, yr: number) => halvd ? getYr(prefix, yr) / 2 : getYr(prefix, yr)
+                    const fv = (key: string)                => halvd ? getC(key) / 2 : getC(key)
+
+                    return (
+                      <div key={setKey} style={{ marginBottom: 28 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                          {SET_LABELS[setKey] ?? setKey}
+                        </div>
+                        <div className="quote-section">
+                          <table className="quote-table">
+                            <thead>
+                              <tr>
+                                <th>Item</th>
+                                <th>Role</th>
+                                {YEARS.map(y => <th key={y} className="right">{y}</th>)}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {/* Operation Level */}
+                              {divider('Operation Level')}
+                              {OPS.flatMap(op => ROLES.map(role => (
+                                <tr key={`${op}-${role}`}>
+                                  <td style={{ color: role !== 'RPE' ? 'transparent' : undefined }}>{role === 'RPE' ? (OP_LABELS[op] ?? op) : ''}</td>
+                                  <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{role}</td>
+                                  {YEARS.map(y => (
+                                    <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                      {fmtVal((setData[op]?.[y] as Record<string, number>)?.[role] ?? 0)}
+                                    </td>
+                                  ))}
+                                </tr>
+                              )))}
+                              <tr>
+                                <td>Robot Time Improvement</td>
+                                <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>multiplier</td>
                                 {YEARS.map(y => (
                                   <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                                    {row.values[y] !== undefined ? fmtVal(row.values[y]!) : '—'}
+                                    {fmtVal(getC(`robot_improvement_${y}`))}
                                   </td>
                                 ))}
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Flat constants — split into rates (private) and fixed hours */}
-                  {(() => {
-                    const FIXED_HOURS_KEYS = new Set(['purchaser_setup_hrs', 'pm_setup_hrs', 'purchaser_overhead_hrs', 'pm_overhead_hrs'])
-                    const rateConsts  = flat.filter(c => c.key.startsWith('rate_'))
-                    const hoursConsts = flat.filter(c => FIXED_HOURS_KEYS.has(c.key))
-                    return (
-                      <>
-                        {hoursConsts.length > 0 && (
-                          <div style={{ marginBottom: 24 }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-                              Fixed Hours (no year variance)
-                            </div>
-                            <div className="quote-section">
-                              <table className="quote-table">
-                                <thead>
-                                  <tr>
-                                    <th>Description</th>
-                                    <th className="right">Hours</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {hoursConsts.map(c => (
-                                    <tr key={c.key}>
-                                      <td>{c.description ?? c.key}</td>
-                                      <td className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(c.value)}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-                        {rateConsts.length > 0 && (
-                          <div style={{ marginBottom: 24 }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-                              Hourly Rates
-                            </div>
-                            <div className="quote-section">
-                              <table className="quote-table">
-                                <thead>
-                                  <tr>
-                                    <th>Description</th>
-                                    <th className="right">Value</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {rateConsts.map(c => {
-                                    const isRobot = ['rate_Small', 'rate_Medium', 'rate_Large'].includes(c.key)
-                                    return (
-                                      <tr key={c.key}>
-                                        <td>{c.description ?? c.key}</td>
-                                        <td className="right" style={isRobot ? { fontFamily: 'monospace', fontWeight: 600 } : { color: 'var(--gray-400)', fontStyle: 'italic' }}>
-                                          {isRobot ? fmtVal(c.value) : 'private'}
-                                        </td>
-                                      </tr>
-                                    )
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-                      </>
+                              {/* Part Level */}
+                              {divider('Part Level')}
+                              {[
+                                { label: 'Prep for Shipping', role: 'Tech', prefix: 'palletize_Tech', scope: 'Every part' },
+                                { label: 'Unistrut',          role: 'Tech', prefix: 'unistrut_Tech',  scope: 'Every part' },
+                              ].map(row => (
+                                <tr key={row.prefix}>
+                                  <td>{row.label} <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>— {row.scope}</span></td>
+                                  <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{row.role}</td>
+                                  {YEARS.map(y => <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(yv(row.prefix, y))}</td>)}
+                                </tr>
+                              ))}
+                              {([
+                                { label: 'Purchaser Setup',    role: 'Purchaser', key: 'purchaser_setup_hrs',    scope: 'First part only' },
+                                { label: 'PM Setup',           role: 'PM',        key: 'pm_setup_hrs',           scope: 'First part only' },
+                                { label: 'Purchaser Overhead', role: 'Purchaser', key: 'purchaser_overhead_hrs', scope: 'Every part' },
+                                { label: 'PM Overhead',        role: 'PM',        key: 'pm_overhead_hrs',        scope: 'Every part' },
+                              ] as { label: string; role: string; key: string; scope: string }[]).map(row => (
+                                <tr key={row.key}>
+                                  <td>{row.label} <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>— {row.scope}</span></td>
+                                  <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{row.role}</td>
+                                  {YEARS.map(y => <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(fv(row.key))}</td>)}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     )
-                  })()}
+                  })}
+
+                  {/* Hourly Rates — global, not set-specific */}
+                  <div style={{ marginBottom: 28 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                      Hourly Rates
+                    </div>
+                    <div className="quote-section">
+                      <table className="quote-table">
+                        <thead><tr><th>Role / Cell</th><th className="right">$/hr</th></tr></thead>
+                        <tbody>
+                          {flat.filter(c => c.key.startsWith('rate_')).map(c => {
+                            const isRobot = ['rate_Small', 'rate_Medium', 'rate_Large'].includes(c.key)
+                            return (
+                              <tr key={c.key}>
+                                <td>{c.description ?? c.key}</td>
+                                <td className="right" style={isRobot ? { fontFamily: 'monospace', fontWeight: 600 } : { color: 'var(--gray-400)', fontStyle: 'italic' }}>
+                                  {isRobot ? fmtVal(c.value) : 'private'}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </>
               )
             })()}
