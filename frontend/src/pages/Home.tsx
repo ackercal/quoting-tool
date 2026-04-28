@@ -519,50 +519,88 @@ export default function Home() {
               </div>
             </div>
 
+            {/* ── This Tool and Its Future ── */}
+            <div style={{ marginBottom: 36 }}>
+              <div className="section-heading" style={{ marginTop: 0, marginBottom: 6, fontSize: 16 }}>This Tool and Its Future</div>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75 }}>
+                This tool is built around two inputs that mirror the way we internally talk about the difficulty of making a part: <strong>how long the robot will run</strong> and <strong>how many trials it will take</strong> to reach the customer's requirements. The hard part about using this tool well is getting an accurate run time estimate.
+              </p>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75, marginTop: 12 }}>
+                We will support you in this going forward. The first step is putting an accurate run time estimator into Architect — shortening the path from a skirted part to a reliable run time estimate. After that we will ship an improved auto-skirter so you can go all the way from a metric surface to a run time with minimal manual work. Eventually we may look at providing an estimator based only on the metric surface geometry.
+              </p>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75, marginTop: 12 }}>
+                The reason we are doing it in this order is that the forming settings an RPE chooses — things like layer height — can have an enormous impact on run time. Estimating directly from surface area or other simplified geometry assumptions doesn't work reliably given how much those choices matter.
+              </p>
+            </div>
+
+            {/* ── First Part vs Duplicate ── */}
+            <div style={{ marginBottom: 36 }}>
+              <div className="section-heading" style={{ marginTop: 0, marginBottom: 6, fontSize: 16 }}>First Part vs Duplicate</div>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75 }}>
+                One of the most important things this tool does is separate the cost of making the <strong>first deliverable part</strong> from the cost of <strong>duplicating it</strong>. This reflects a real pattern in how we work: it takes time and material to find the right recipe for a part, but once we have it the robots are repeatable and can duplicate their results with minimal human involvement.
+              </p>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75, marginTop: 12 }}>
+                We only stop IF trials when we have the recipe we want to duplicate — which means the last IF run <em>is</em> the first deliverable part. Take a customer who wants 5 parts and where you expect 5 pre-IF and 5 IF trials: you'd need to form <strong>14 sheets of metal</strong>. After 10 trial procedures you have made one finished part. You then duplicate that 4 more times. All 10 trial procedures are priced into the "first part" cost; the remaining 4 are priced as duplicates.
+              </p>
+            </div>
+
+            {/* ── How This Tool Works ── */}
+            <div style={{ marginBottom: 36 }}>
+              <div className="section-heading" style={{ marginTop: 0, marginBottom: 6, fontSize: 16 }}>How This Tool Works</div>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75 }}>
+                This is a <strong>cost-plus tool</strong>. We estimate our costs and add a margin to arrive at a price. Costs are broken into three buckets: <strong>labor</strong>, <strong>robot time</strong>, and <strong>parts and other</strong>.
+              </p>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75, marginTop: 12 }}>
+                You provide the robot hours. For labor, we have hard-coded the number of hours each role — RPE, ME, and Technician — is involved at each step, based on estimates from team managers and product. For example, a pre-IF forming procedure currently carries <strong>2 hrs of RPE time, 1 hr of ME time, and 1.5 hrs of Technician time</strong> per sheet of metal run. Those hours are multiplied by each role's hourly rate to get the labor cost for that procedure.
+              </p>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75, marginTop: 12 }}>
+                There are also overhead labor costs that aren't tied to a single procedure — things like Project Manager coordination, Purchaser sourcing, and unistrut fixturing setup. These are added on top of the per-procedure costs.
+              </p>
+            </div>
+
+            {/* ── Improvement ── */}
+            <div style={{ marginBottom: 36 }}>
+              <div className="section-heading" style={{ marginTop: 0, marginBottom: 6, fontSize: 16 }}>Improvement Over Time</div>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75 }}>
+                To capture our expected product improvements in pricing, we have estimates for how much labor per person will decrease year-over-year and how much faster the robots will form. These factors are applied automatically when you select a future year of execution. The underlying values are visible in the <strong>Dev Tools</strong> tab. Labor reductions come from better tooling that removes manual steps or speeds up each person's process.
+              </p>
+            </div>
+
+            {/* ── Margin ── */}
+            <div style={{ marginBottom: 36 }}>
+              <div className="section-heading" style={{ marginTop: 0, marginBottom: 6, fontSize: 16 }}>Margin</div>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', lineHeight: 1.75 }}>
+                We draw a distinction between <strong>internal work</strong> and <strong>outside service providers (OSP)</strong>. We typically charge a <strong>70% margin</strong> on our own labor and robot time. For work done by someone else — heat treatment, external post-processing, purchased parts — we charge a <strong>10% margin</strong>, which covers our coordination effort. The tool applies these separately so the blended margin reflects the actual mix of internal and external costs on each project.
+              </p>
+            </div>
+
+            <div style={{ borderBottom: '1px solid var(--gray-200)', margin: '8px 0 36px' }} />
+
+            {/* ── Kept reference sections ── */}
             {[
               {
-                heading: 'Two types of parts: First Part and Duplicate',
-                body: `Every part in an assembly is costed twice. The first time a part is made it carries all the setup and development work — forming trials, programming, skirt/path planning, and first-article inspection. Every subsequent copy of that same part (a duplicate) skips all of that and only carries the production cost. When you enter a quantity of, say, 3 assemblies, the tool prices the first assembly using first-part cost for each unique part, and the remaining 2 assemblies at duplicate cost.`,
+                heading: 'Robot Types (Small / Medium / Large)',
+                body: `The robot cell used for forming has its own hourly cost, which varies by size — a Large robot costs significantly more per hour than a Small one. This rate is applied to the effective robot hours (after the improvement factor) for every forming, scanning, and cutting operation across all trials and the production run. Current rates: Small $24.42/hr, Medium $37.57/hr, Large $55.07/hr.`,
               },
               {
-                heading: 'Forming trials (Pre-IF and IF)',
-                body: `Before a production-quality part is achieved, the robot runs a series of forming trials. Pre-IF trials are the initial exploratory runs before the part geometry is dialled in. IF (Incremental Forming) trials are the iterative tolerancing passes that bring the part within spec. Each trial consumes robot time, human labour (RPE, ME, and Technician), and a sheet of raw material. The number of each trial type is an input — a judgement call based on part complexity.`,
+                heading: 'Sheet Material Cost',
+                body: `Each trial and each production run consumes a sheet of raw material. You enter the cost per full frame sheet and how many parts fit per sheet — the tool divides to get the material cost per part per procedure. Sheet cost is included in every trial procedure and in the duplicate production run.`,
               },
               {
-                heading: 'Robot time and the improvement factor',
-                body: `Forming, scanning, and cutting each have a robot time input measured in hours. You enter the current baseline estimate (what the job takes today in 2026). For future years the tool automatically applies an improvement factor — 65% of the 2026 time in 2027, and 42.25% in 2028 — reflecting expected gains in robot speed and process maturity. This factor is applied to every operation that uses robot time.`,
+                heading: 'Heat Treatment and Post-Processing',
+                body: `HT cost per part covers the heat treatment cycle. Post-processing captures any manual finishing work — sanding, welding, quality checks, and similar operations. These are split into internal labor and external vendor (OSP) costs. The first part carries an additional setup charge. All post-processing costs are added on top of robot and labor costs.`,
               },
               {
-                heading: 'Labour rates by role',
-                body: `Each operation has a fixed number of labour hours per role: RPE (Robotic Process Engineer), ME (Mechanical Engineer), and Technician. These hours are looked up from the Forecast sheet and vary by year as the process becomes more automated. They are multiplied by the corresponding hourly rate for each role to get the labour cost per operation.`,
+                heading: 'Unistrut Fixturing',
+                body: `Some parts require a unistrut fixture to hold the sheet during forming. When the unistrut toggle is on, the tool adds Technician time for building and setting up the fixture. That time decreases year-over-year as fixturing becomes more standardized.`,
               },
               {
-                heading: 'Robot type (Small / Medium / Large)',
-                body: `The robot cell used for forming has its own hourly cost, which varies by size. A Large robot costs significantly more per hour than a Small one. This rate is applied to the effective robot hours (after the improvement factor) for every forming, scanning, and cutting operation across all trials and the production run.`,
-              },
-              {
-                heading: 'Sheet material cost',
-                body: `Each trial and each production part consumes a sheet of raw material. You enter the cost per full frame sheet and how many parts fit per sheet — the tool divides to get the material cost per part per procedure. Material cost is included in every trial and in the duplicate production procedure.`,
-              },
-              {
-                heading: 'Heat treatment and post-processing',
-                body: `HT cost per part covers the heat treatment cycle. Post-processing captures any manual finishing work — sanding, welding, quality checks, and similar. These are split into internal labour and external vendor costs. For the first part there is an additional first-article setup charge. All post-processing costs are added on top of the robot and labour costs.`,
-              },
-              {
-                heading: 'Unistrut fixturing',
-                body: `Some parts require a unistrut fixture to hold the sheet during forming. When the unistrut toggle is on, the tool adds Technician time for building and setting up the fixture. That time decreases year-on-year as fixturing becomes more standardised.`,
-              },
-              {
-                heading: 'Fixed overhead per part',
+                heading: 'Fixed Overhead Per Part',
                 body: `Every part carries a small fixed overhead regardless of complexity: Purchaser time to source materials and manage suppliers, and Project Manager time to coordinate the work. Both roles contribute a setup charge on the first part and a smaller recurring overhead on every duplicate.`,
               },
               {
-                heading: 'Project-level costs',
-                body: `On top of the per-part costs, the project carries its own overhead. RPE time for splitting and DFM analysis (turning a full CAD model into individual formable surfaces) is a one-time charge on the first assembly. Assembly-level post-processing — welding, final QC, and any integration work — is charged on every assembly.`,
-              },
-              {
-                heading: 'Margin and quoted price',
-                body: `The tool totals all costs to produce an internal cost figure. The quoted price is then calculated by applying the gross margin: Quoted Price = Total Cost ÷ (1 − Margin). For example, a 70% margin means the customer pays roughly 3.3× the internal cost. The margin is set at the project level.`,
+                heading: 'Project-Level Costs',
+                body: `On top of per-part costs, the project carries its own overhead. RPE time for splitting and DFM analysis (turning a full CAD model into individual formable surfaces) is a one-time charge on the first assembly. Assembly-level post-processing — welding, final QC, integration work — is charged on every assembly.`,
               },
             ].map(({ heading, body }) => (
               <div key={heading} style={{ marginBottom: 28 }}>
