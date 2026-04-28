@@ -108,10 +108,9 @@ export default function ProjectForm({ project, onUpdate }: Props) {
       <div className="section-heading">Other</div>
       <div className="form-grid" style={{ maxWidth: 640 }}>
         <div className="field">
-          <label>Set Up – Splitting / DFM Analysis (hrs)</label>
+          <label>Engineering Set Up Hours – Splitting, DFM, Jig Design, etc.</label>
           <NumInput min={0} step={0.25} value={form.setup_splitting_hrs}
             onChange={v => set('setup_splitting_hrs', v)} />
-          <div className="field-hint">RPE time to split CAD into formable surfaces</div>
         </div>
         <div className="field">
           <label>Shipping Cost ($)</label>

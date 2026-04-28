@@ -78,6 +78,15 @@ def _get_labor(op: str, year: int) -> dict[str, float]:
 def _robot_improvement(year: int) -> float:
     return ROBOT_IMPROVEMENT.get(year, 1.0)
 
+def _role_costs(op: str, year: int) -> tuple[float, float, float]:
+    """Returns (RPE_cost, ME_cost, Tech_cost) for the labor portion of an operation."""
+    lh = _get_labor(op, year)
+    return (
+        lh["RPE"]  * _rate("RPE",  year),
+        lh["ME"]   * _rate("ME",   year),
+        lh["Tech"] * _rate("Tech", year),
+    )
+
 
 # ── Operation cost ────────────────────────────────────────────────────────────
 # robot_hrs = user's CURRENT (2026-baseline) estimate.
@@ -113,8 +122,8 @@ def calc_procedure_cost(
 
     if proc_type in ("pre_if", "if_proc"):
         ops = forming_cost + scan_cost
-    else:  # duplicate: form + scan + scan + cut
-        ops = forming_cost + scan_cost + scan_cost + cut_cost
+    else:  # duplicate: form + scan [+ scan + cut] (second scan only when cutting > 0)
+        ops = forming_cost + scan_cost + (scan_cost + cut_cost if cutting_hrs > 0 else 0.0)
 
     return cost_per_sheet + ops
 
@@ -207,6 +216,63 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
         + fs_r + fc_r
     )
 
+    # ── Detailed breakdown ───────────────────────────────────────────────────
+    pif_rpe, pif_me, pif_tech  = _role_costs("pre_if_forming", year)
+    sc_rpe,  sc_me,  sc_tech   = _role_costs("scanning",       year)
+    if_rpe,  if_me,  if_tech   = _role_costs("if_forming",     year)
+    cut_rpe, cut_me, cut_tech  = _role_costs("cutting",        year) if part.cutting_time_hrs > 0 else (0.0, 0.0, 0.0)
+
+    mat_per_trial = part.cost_per_sheet / part.parts_per_sheet
+    n_pre = part.est_pre_if_procedures
+    n_if  = part.est_if_procedures
+
+    detailed: list[tuple[str, float]] = []
+
+    def _add(lbl: str, val: float) -> None:
+        if val > 0:
+            detailed.append((lbl, val))
+
+    if n_pre > 0:
+        _add("Robot — Pre-IF Forming",  pif_f_r  * n_pre)
+        _add("RPE — Pre-IF Forming",    pif_rpe  * n_pre)
+        _add("ME — Pre-IF Forming",     pif_me   * n_pre)
+        _add("Tech — Pre-IF Forming",   pif_tech * n_pre)
+        _add("Robot — Pre-IF Scanning", pif_s_r  * n_pre)
+        _add("Tech — Pre-IF Scanning",  sc_tech  * n_pre)
+        _add("Sheet Material — Pre-IF", mat_per_trial * n_pre)
+
+    if n_if > 0:
+        _add("Robot — IF Forming",  if_f_r  * n_if)
+        _add("RPE — IF Forming",    if_rpe  * n_if)
+        _add("ME — IF Forming",     if_me   * n_if)
+        _add("Tech — IF Forming",   if_tech * n_if)
+        _add("Robot — IF Scanning", if_s_r  * n_if)
+        _add("Tech — IF Scanning",  sc_tech * n_if)
+        _add("Sheet Material — IF", mat_per_trial * n_if)
+
+    _add("Robot — Final Scan", fs_r)
+    _add("Tech — Final Scan",  fs_l)
+    if part.cutting_time_hrs > 0:
+        _add("Robot — Final Cut", fc_r)
+        _add("RPE — Final Cut",   cut_rpe)
+        _add("ME — Final Cut",    cut_me)
+        _add("Tech — Final Cut",  cut_tech)
+
+    _add("RPE — Setup",       rpe_setup)
+    _add("Purchaser — Setup", purchaser_setup)
+    _add("PM — Setup",        pm_setup)
+
+    _add("Tech — Prep for Shipping", prep_shipping)
+    _add("Tech — Unistrut",          unistrut_cost)
+    _add("Purchaser — Overhead",     purchaser_ovhd)
+    _add("PM — Overhead",            pm_ovhd)
+
+    _add("Heat Treatment",                     part.ht_cost_per_part)
+    _add("Post Processing — Internal",         part.pp_internal)
+    _add("Post Processing — First Part Setup", part.first_part_additional_setup)
+    _add("Post Processing — External",         part.pp_external)
+    _add("Shipping",                           part.shipping_cost_per_part)
+
     return {
         "total": total,
         "breakdown": {
@@ -230,6 +296,7 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
             "shipping":       part.shipping_cost_per_part,
             "non_roboformed": 0.0,
         },
+        "detailed_breakdown": detailed,
     }
 
 
@@ -251,6 +318,43 @@ def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
     ds_l, ds_r = _op_labor_robot("scanning",    part.scanning_time_hrs, s, year)
     dc_l, dc_r = _op_labor_robot("cutting",     part.cutting_time_hrs,  s, year) if part.cutting_time_hrs > 0 else (0.0, 0.0)
 
+    # ── Detailed breakdown ───────────────────────────────────────────────────
+    df_rpe, df_me, df_tech  = _role_costs("dup_forming", year)
+    sc_rpe,  sc_me,  sc_tech = _role_costs("scanning",   year)
+    dc_rpe, dc_me, dc_tech  = _role_costs("cutting",     year) if part.cutting_time_hrs > 0 else (0.0, 0.0, 0.0)
+    mat_cost = part.cost_per_sheet / part.parts_per_sheet
+
+    detailed: list[tuple[str, float]] = []
+
+    def _add(lbl: str, val: float) -> None:
+        if val > 0:
+            detailed.append((lbl, val))
+
+    _add("Robot — Forming", df_r)
+    _add("ME — Forming",    df_me)
+    _add("Tech — Forming",  df_tech)
+    _add("Robot — Scan",    ds_r)
+    _add("Tech — Scan",     sc_tech)
+    if part.cutting_time_hrs > 0:
+        _add("Robot — Pre-Cut Scan", ds_r)
+        _add("Tech — Pre-Cut Scan",  sc_tech)
+        _add("Robot — Cutting",      dc_r)
+        _add("RPE — Cutting",        dc_rpe)
+        _add("ME — Cutting",         dc_me)
+        _add("Tech — Cutting",       dc_tech)
+    _add("Sheet Material",  mat_cost)
+
+    _add("Tech — Prep for Shipping", prep_shipping)
+    _add("Tech — Unistrut",          unistrut_cost)
+    _add("Purchaser — Overhead",     purchaser_ovhd)
+    _add("PM — Overhead",            pm_ovhd)
+
+    _add("Heat Treatment",             part.ht_cost_per_part)
+    _add("Post Processing — Internal", part.pp_internal)
+    _add("Post Processing — External", part.pp_external)
+    _add("Shipping",                   part.shipping_cost_per_part)
+
+    n_scans = 2 if part.cutting_time_hrs > 0 else 1
     return {
         "total": total,
         "breakdown": {
@@ -262,13 +366,14 @@ def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
             "post_processing":     pp_dup,
         },
         "category_breakdown": {
-            "labor":          df_l + ds_l * 2 + dc_l + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd + part.pp_internal + part.pp_external,
-            "robot":          df_r + ds_r * 2 + dc_r,
+            "labor":          df_l + ds_l * n_scans + dc_l + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd + part.pp_internal + part.pp_external,
+            "robot":          df_r + ds_r * n_scans + dc_r,
             "materials":      part.cost_per_sheet / part.parts_per_sheet,
             "heat_treat":     part.ht_cost_per_part,
             "shipping":       part.shipping_cost_per_part,
             "non_roboformed": 0.0,
         },
+        "detailed_breakdown": detailed,
     }
 
 
@@ -299,8 +404,10 @@ def calc_part_assembly_costs(part: PartInputs, year: int) -> dict:
         "dup_part_cost":   dup["total"],
         "first_breakdown": first["breakdown"],
         "dup_breakdown":   dup["breakdown"],
-        "first_category_breakdown": first["category_breakdown"],
-        "dup_category_breakdown":   dup["category_breakdown"],
+        "first_category_breakdown":  first["category_breakdown"],
+        "dup_category_breakdown":    dup["category_breakdown"],
+        "first_detailed_breakdown":  first["detailed_breakdown"],
+        "dup_detailed_breakdown":    dup["detailed_breakdown"],
     }
 
 

@@ -263,6 +263,31 @@ function BreakdownTable({ label, detail, isFirst }: { label: string; detail: Par
   )
 }
 
+function DetailedBreakdownTable({ label, rows, total }: { label: string; rows: [string, number][]; total: number }) {
+  return (
+    <table className="quote-table">
+      <thead>
+        <tr>
+          <th>{label}</th>
+          <th className="right">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([name, val]) => (
+          <tr key={name}>
+            <td style={{ paddingLeft: 32 }}>{name}</td>
+            <td className="right">{$2(val)}</td>
+          </tr>
+        ))}
+        <tr className="subtotal">
+          <td>Total per Part</td>
+          <td className="right">{$2(total)}</td>
+        </tr>
+      </tbody>
+    </table>
+  )
+}
+
 function CategoryBreakdownTable({ label, breakdown, total, totalLabel = 'Total per Part' }: { label: string; breakdown: CategoryBreakdown; total: number; totalLabel?: string }) {
   const rows: [string, number][] = [
     ['Labor',              breakdown.labor],
@@ -324,10 +349,10 @@ export default function QuoteView({ projectId }: Props) {
         import('html2canvas'),
         import('jspdf'),
       ])
-      const canvas = await html2canvas(pdfRef.current, { scale: 4, useCORS: true, backgroundColor: '#ffffff' })
-      const imgData = canvas.toDataURL('image/png')
+      const canvas = await html2canvas(pdfRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+      const imgData = canvas.toDataURL('image/jpeg', 0.85)
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [canvas.width / 2, canvas.height / 2] })
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2)
+      pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width / 2, canvas.height / 2)
       pdf.save(`${quote.project.name} — Quote.pdf`)
     } finally {
       setExport(false)
@@ -477,34 +502,23 @@ export default function QuoteView({ projectId }: Props) {
                   <tr><td style={{ paddingLeft: 32 }}>Duplicate Part</td><td className="right">{$2(detail.dup_part_cost)}</td></tr>
                 </tbody>
               </table>
-            ) : (<>
-              {detail.first_category_breakdown && detail.dup_category_breakdown && (
+            ) : (
+              detail.first_detailed_breakdown && detail.dup_detailed_breakdown ? (
                 <>
                   <div style={{ padding: '16px 20px 12px', fontSize: 14, fontWeight: 700, color: '#191919', borderTop: '1px solid var(--gray-200)' }}>
-                    Breakdown by Category (Cost)
+                    Detailed Cost Breakdown
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                     <div style={{ borderRight: '1px solid var(--gray-200)' }}>
-                      <CategoryBreakdownTable label="First Part" breakdown={detail.first_category_breakdown} total={detail.first_part_cost} />
+                      <DetailedBreakdownTable label="First Part" rows={detail.first_detailed_breakdown} total={detail.first_part_cost} />
                     </div>
                     <div>
-                      <CategoryBreakdownTable label="Duplicate Part" breakdown={detail.dup_category_breakdown} total={detail.dup_part_cost} />
+                      <DetailedBreakdownTable label="Duplicate Part" rows={detail.dup_detailed_breakdown} total={detail.dup_part_cost} />
                     </div>
                   </div>
                 </>
-              )}
-              <div style={{ padding: '16px 20px 12px', fontSize: 14, fontWeight: 700, color: '#191919', borderTop: '1px solid var(--gray-200)' }}>
-                Breakdown by Step (Cost)
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-                <div style={{ borderRight: '1px solid var(--gray-200)' }}>
-                  <BreakdownTable label="First Part" detail={detail} isFirst={true} />
-                </div>
-                <div>
-                  <BreakdownTable label="Duplicate Part" detail={detail} isFirst={false} />
-                </div>
-              </div>
-            </>)}
+              ) : null
+            )}
           </Section>
         )
       })}

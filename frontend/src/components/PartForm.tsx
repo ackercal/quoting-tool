@@ -256,7 +256,7 @@ export default function PartForm({ part, year, onUpdate, onDelete, onDuplicate }
       <div className="section-heading">Other</div>
       <div className="form-grid" style={{ maxWidth: 640 }}>
         <div className="field">
-          <label>Set Up – Skirt, Path Plan, Sim (hrs)</label>
+          <label>Engineering Set Up Hours – Skirt, Path Plan, Sim</label>
           <NumInput min={0} step={0.25} value={form.setup_skirt_path_plan_sim_hrs}
             onChange={v => set('setup_skirt_path_plan_sim_hrs', v)} />
         </div>

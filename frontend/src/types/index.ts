@@ -98,6 +98,8 @@ export interface PartCostDetail {
   dup_breakdown: DupBreakdown;
   first_category_breakdown: CategoryBreakdown;
   dup_category_breakdown: CategoryBreakdown;
+  first_detailed_breakdown?: [string, number][];
+  dup_detailed_breakdown?: [string, number][];
 }
 
 export interface YearPrice {
