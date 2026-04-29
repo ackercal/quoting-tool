@@ -97,7 +97,7 @@ LABOR_HOURS_CUSTOM_AUTO: dict[str, dict[int, dict[str, float]]] = {
         2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
     },
     "dup_forming": {
-        2026: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.75},
+        2026: {"RPE": 0.0,  "ME": 0.25, "Tech": 0.75},
         2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
         2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
     },
@@ -117,7 +117,7 @@ LABOR_HOURS_CUSTOM_AUTO: dict[str, dict[int, dict[str, float]]] = {
         2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
     },
     "dup_cut": {
-        2026: {"RPE": 2.0,  "ME": 2.0,  "Tech": 0.5},
+        2026: {"RPE": 0.5,  "ME": 2.0,  "Tech": 0.5},
         2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
         2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
     },
