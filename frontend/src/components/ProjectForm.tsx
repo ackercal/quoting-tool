@@ -61,7 +61,10 @@ export default function ProjectForm({ project, onUpdate }: Props) {
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           {form.year_of_execution > 2026 && (
-            <div className="field-hint">Robot time improvements for {form.year_of_execution} will be applied automatically.</div>
+            <div className="field-hint">
+              Labor and robot time improvements for {form.year_of_execution} will be applied automatically.{' '}
+              <strong>Enter all estimates (robot times, trial counts) based on current {new Date().getFullYear()} capability</strong> — the tool scales them for the selected year.
+            </div>
           )}
         </div>
         <div className="field">
@@ -120,9 +123,10 @@ export default function ProjectForm({ project, onUpdate }: Props) {
       <div className="section-heading">Other</div>
       <div className="form-grid" style={{ maxWidth: 640 }}>
         <div className="field">
-          <label>Engineering Set Up Hours – Splitting, DFM, Jig Design, etc.</label>
+          <label>Cumulative Engineering Set Up Hours for First Assembly</label>
           <NumInput min={0} step={0.25} value={form.setup_splitting_hrs}
             onChange={v => set('setup_splitting_hrs', v)} />
+          <div className="field-hint">Splitting, DFM, Jig Design, etc.</div>
         </div>
         <div className="field">
           <label>Shipping Cost ($)</label>

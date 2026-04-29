@@ -119,6 +119,8 @@ export interface QuoteResult {
   dup_assembly_price: number;
   num_dup_assemblies: number;
   rpe_splitting: number;
+  proj_purchaser: number;
+  proj_pm: number;
   margin: number;
   part_details: PartCostDetail[];
   year_prices: Record<number, YearPrice>;

@@ -1,8 +1,9 @@
 """
-Pricing calculations derived from Claude Version.xlsx (updated April 2026)
-  Sheet 1: Labor + Robot Time  (inputs + formulas)
-  Sheet 2: Forecast             (constants)
+Pricing calculations derived from quote_calc_final_labor_forecasts.xlsx (April 2026)
+  Two vertical sets: Formed Parts, Custom Auto
+  Per-operation robot improvement factors, trial reduction constants
 """
+import math
 from dataclasses import dataclass
 
 # ── Forecast: Hourly rates (same across years for now) ────────────────────────
@@ -17,51 +18,109 @@ HOURLY_RATES: dict[str, dict[int, float]] = {
     "Large":     {2026: 55.07, 2027: 55.07, 2028: 55.07},
 }
 
-# ── Forecast: Robot improvement factors (B44:D48) ─────────────────────────────
+# ── Forecast: Robot improvement factors — per operation type ──────────────────
 # Applied to the user's current robot time estimate.
 # User enters 2026-baseline hours; future years multiply by this factor.
-ROBOT_IMPROVEMENT: dict[int, float] = {
+ROBOT_IMPROVEMENT: dict[str, dict[int, float]] = {
+    "forming":  {2026: 1.0, 2027: 0.65,   2028: 0.4225},
+    "scanning": {2026: 1.0, 2027: 0.75,   2028: 0.5},
+    "cutting":  {2026: 1.0, 2027: 0.65,   2028: 0.4225},
+}
+
+# Maps each operation key → robot improvement category
+OP_ROBOT_CATEGORY: dict[str, str] = {
+    "pre_if_forming": "forming",
+    "if_forming":     "forming",
+    "dup_forming":    "forming",
+    "first_scan":     "scanning",
+    "dup_scan":       "scanning",
+    "first_cut":      "cutting",
+    "dup_cut":        "cutting",
+}
+
+# ── Forecast: Trial reduction — multiplied against est procedures, rounded up ─
+TRIAL_REDUCTION: dict[int, float] = {
     2026: 1.0,
-    2027: 0.65,
-    2028: 0.4225,
+    2027: 0.75,
+    2028: 0.5,
 }
 
 # ── Forecast: Labor hours per operation — Formed Parts ────────────────────────
 LABOR_HOURS_FORMED_PARTS: dict[str, dict[int, dict[str, float]]] = {
     "pre_if_forming": {
-        2026: {"RPE": 2.0,  "ME": 1.0, "Tech": 1.5},
-        2027: {"RPE": 1.0,  "ME": 1.0, "Tech": 1.0},
-        2028: {"RPE": 0.0,  "ME": 1.0, "Tech": 0.5},
+        2026: {"RPE": 2.0,  "ME": 1.0,  "Tech": 1.5},
+        2027: {"RPE": 1.0,  "ME": 0.5,  "Tech": 1.0},
+        2028: {"RPE": 0.5,  "ME": 0.0,  "Tech": 0.0},
     },
     "if_forming": {
         2026: {"RPE": 0.75, "ME": 0.5,  "Tech": 1.5},
         2027: {"RPE": 0.25, "ME": 0.0,  "Tech": 1.0},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
     },
     "dup_forming": {
         2026: {"RPE": 0.0,  "ME": 0.5,  "Tech": 1.5},
         2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 1.0},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
-    },
-    "scanning": {
-        2026: {"RPE": 0.0,  "ME": 0.0,  "Tech": 2.0},
-        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 1.0},
         2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
     },
-    "cutting": {
+    "first_scan": {
+        2026: {"RPE": 0.75, "ME": 1.0,  "Tech": 1.0},
+        2027: {"RPE": 0.75, "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+    },
+    "dup_scan": {
+        2026: {"RPE": 0.0,  "ME": 0.0,  "Tech": 1.0},
+        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+    },
+    "first_cut": {
+        2026: {"RPE": 3.0,  "ME": 2.5,  "Tech": 0.5},
+        2027: {"RPE": 1.5,  "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+    },
+    "dup_cut": {
         2026: {"RPE": 0.5,  "ME": 2.0,  "Tech": 0.5},
-        2027: {"RPE": 0.5,  "ME": 0.5,  "Tech": 0.5},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
     },
 }
 
-# ── Forecast: Labor hours per operation — Custom Auto (half of Formed Parts) ──
+# ── Forecast: Labor hours per operation — Custom Auto ─────────────────────────
 LABOR_HOURS_CUSTOM_AUTO: dict[str, dict[int, dict[str, float]]] = {
-    op: {
-        yr: {role: hrs / 2.0 for role, hrs in roles.items()}
-        for yr, roles in years.items()
-    }
-    for op, years in LABOR_HOURS_FORMED_PARTS.items()
+    "pre_if_forming": {
+        2026: {"RPE": 2.5,  "ME": 0.5,  "Tech": 0.75},
+        2027: {"RPE": 1.25, "ME": 0.5,  "Tech": 0.5},
+        2028: {"RPE": 0.75, "ME": 0.0,  "Tech": 0.0},
+    },
+    "if_forming": {
+        2026: {"RPE": 1.0,  "ME": 0.5,  "Tech": 0.75},
+        2027: {"RPE": 0.25, "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+    },
+    "dup_forming": {
+        2026: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.75},
+        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+    },
+    "first_scan": {
+        2026: {"RPE": 0.0,  "ME": 0.25, "Tech": 0.5},
+        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+    },
+    "dup_scan": {
+        2026: {"RPE": 0.0,  "ME": 0.25, "Tech": 0.5},
+        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.25},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+    },
+    "first_cut": {
+        2026: {"RPE": 2.0,  "ME": 2.0,  "Tech": 0.5},
+        2027: {"RPE": 1.0,  "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+    },
+    "dup_cut": {
+        2026: {"RPE": 2.0,  "ME": 2.0,  "Tech": 0.5},
+        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+    },
 }
 
 LABOR_HOURS_SETS: dict[str, dict] = {
@@ -69,14 +128,42 @@ LABOR_HOURS_SETS: dict[str, dict] = {
     "custom_auto":  LABOR_HOURS_CUSTOM_AUTO,
 }
 
+# ── Part-level hours per set ──────────────────────────────────────────────────
+PART_HOURS_FORMED_PARTS: dict[str, object] = {
+    "palletize_tech":     {2026: 0.5,  2027: 0.5,  2028: 0.5},
+    "unistrut_tech":      {2026: 6.0,  2027: 2.0,  2028: 1.0},
+    "purchaser_setup":    2.0,
+    "pm_setup":           2.0,
+    "purchaser_overhead": 0.25,
+    "pm_overhead":        0.25,
+}
+PART_HOURS_CUSTOM_AUTO: dict[str, object] = {
+    "palletize_tech":     {2026: 0.5,  2027: 0.5,  2028: 0.5},
+    "unistrut_tech":      {2026: 6.0,  2027: 6.0,  2028: 6.0},
+    "purchaser_setup":    2.0,
+    "pm_setup":           2.0,
+    "purchaser_overhead": 0.25,
+    "pm_overhead":        0.25,
+}
+PART_HOURS_SETS: dict[str, dict] = {
+    "formed_parts": PART_HOURS_FORMED_PARTS,
+    "custom_auto":  PART_HOURS_CUSTOM_AUTO,
+}
+
+# ── Project-level overhead hours (year-varying, applied once per project) ─────
+PROJECT_HOURS: dict[str, dict[int, float]] = {
+    "purchaser": {2026: 2.0, 2027: 1.0, 2028: 1.0},
+    "pm":        {2026: 5.0, 2027: 3.0, 2028: 1.0},
+}
+
 # Keep alias for any legacy references
 LABOR_HOURS = LABOR_HOURS_FORMED_PARTS
 
-# ── Forecast: Extra tech hours (B37:D38) ──────────────────────────────────────
-UNISTRUT_TECH_HRS: dict[int, float] = {2026: 6.0, 2027: 2.0, 2028: 1.0}
-PALLETIZE_TECH_HRS: dict[int, float] = {2026: 0.5, 2027: 0.5, 2028: 0.5}
+# ── Forecast: Extra tech hours (legacy aliases) ───────────────────────────────
+UNISTRUT_TECH_HRS:   dict[int, float] = {2026: 6.0, 2027: 2.0, 2028: 1.0}
+PALLETIZE_TECH_HRS:  dict[int, float] = {2026: 0.5, 2027: 0.5, 2028: 0.5}
 
-# ── Part-level fixed overhead (hardcoded in Labor+Robot sheet) ────────────────
+# ── Part-level fixed overhead (legacy scalars) ────────────────────────────────
 PURCHASER_SETUP_HRS    = 2.0
 PM_SETUP_HRS           = 2.0
 PURCHASER_OVERHEAD_HRS = 0.25
@@ -93,8 +180,9 @@ def _get_labor(op: str, year: int, constants_set: str = "formed_parts") -> dict[
     op_data = table.get(op, {})
     return op_data.get(year) or op_data.get(2026) or {"RPE": 0.0, "ME": 0.0, "Tech": 0.0}
 
-def _robot_improvement(year: int) -> float:
-    return ROBOT_IMPROVEMENT.get(year, 1.0)
+def _robot_improvement(op: str, year: int) -> float:
+    cat = OP_ROBOT_CATEGORY.get(op, "forming")
+    return ROBOT_IMPROVEMENT[cat].get(year, 1.0)
 
 def _role_costs(op: str, year: int, constants_set: str = "formed_parts") -> tuple[float, float, float]:
     """Returns (RPE_cost, ME_cost, Tech_cost) for the labor portion of an operation."""
@@ -117,7 +205,7 @@ def calc_operation_cost(op: str, robot_hrs: float, strength: str, year: int, con
         + hrs["ME"] * _rate("ME",   year)
         + hrs["Tech"]* _rate("Tech", year)
     )
-    effective_robot_hrs = robot_hrs * _robot_improvement(year)
+    effective_robot_hrs = robot_hrs * _robot_improvement(op, year)
     robot_cost = effective_robot_hrs * _rate(strength, year)
     return labor + robot_cost
 
@@ -136,8 +224,8 @@ def calc_procedure_cost(
 ) -> float:
     op_map = {"pre_if": "pre_if_forming", "if_proc": "if_forming", "duplicate": "dup_forming"}
     forming_cost = calc_operation_cost(op_map[proc_type], forming_hrs, strength, year, constants_set)
-    scan_cost    = calc_operation_cost("scanning", scanning_hrs, strength, year, constants_set)
-    cut_cost     = calc_operation_cost("cutting",  cutting_hrs,  strength, year, constants_set) if cutting_hrs > 0 else 0.0
+    scan_cost    = calc_operation_cost("dup_scan", scanning_hrs, strength, year, constants_set)
+    cut_cost     = calc_operation_cost("dup_cut",  cutting_hrs,  strength, year, constants_set) if cutting_hrs > 0 else 0.0
 
     if proc_type in ("pre_if", "if_proc"):
         ops = forming_cost + scan_cost
@@ -178,7 +266,7 @@ def _op_labor_robot(op: str, robot_hrs: float, strength: str, year: int, constan
     """Returns (labor_cost, robot_cost) for a single operation."""
     lh = _get_labor(op, year, constants_set)
     labor = lh["RPE"] * _rate("RPE", year) + lh["ME"] * _rate("ME", year) + lh["Tech"] * _rate("Tech", year)
-    robot = robot_hrs * _robot_improvement(year) * _rate(strength, year)
+    robot = robot_hrs * _robot_improvement(op, year) * _rate(strength, year)
     return labor, robot
 
 
@@ -186,25 +274,32 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
     s  = part.robot_strength
     cs = part.labor_constants
 
+    # Apply trial reduction (round up to nearest whole number)
+    trial_factor = TRIAL_REDUCTION.get(year, 1.0)
+    n_pre = math.ceil(part.est_pre_if_procedures * trial_factor)
+    n_if  = math.ceil(part.est_if_procedures     * trial_factor)
+
+    mat_per_part = part.cost_per_sheet / part.parts_per_sheet
     pre_if_proc = calc_procedure_cost("pre_if",  part.forming_time_hrs, part.scanning_time_hrs,
-                                      part.cutting_time_hrs, part.cost_per_sheet, s, year, cs)
+                                      part.cutting_time_hrs, mat_per_part, s, year, cs)
     if_proc     = calc_procedure_cost("if_proc", part.forming_time_hrs, part.scanning_time_hrs,
-                                      part.cutting_time_hrs, part.cost_per_sheet, s, year, cs)
+                                      part.cutting_time_hrs, mat_per_part, s, year, cs)
 
-    trials = pre_if_proc * part.est_pre_if_procedures + if_proc * part.est_if_procedures
+    trials = pre_if_proc * n_pre + if_proc * n_if
 
+    ph              = PART_HOURS_SETS.get(cs, PART_HOURS_FORMED_PARTS)
     rpe_setup       = part.setup_skirt_path_plan_sim_hrs * _rate("RPE", year)
-    purchaser_setup = PURCHASER_SETUP_HRS    * _rate("Purchaser", year)
-    pm_setup        = PM_SETUP_HRS           * _rate("PM",        year)
-    prep_shipping   = PALLETIZE_TECH_HRS.get(year, 0.5) * _rate("Tech", year)
-    unistrut_cost   = (UNISTRUT_TECH_HRS.get(year, 6.0) * _rate("Tech", year)) if part.unistrut else 0.0
-    purchaser_ovhd  = PURCHASER_OVERHEAD_HRS * _rate("Purchaser", year)
-    pm_ovhd         = PM_OVERHEAD_HRS        * _rate("PM",        year)
+    purchaser_setup = ph["purchaser_setup"]              * _rate("Purchaser", year)
+    pm_setup        = ph["pm_setup"]                     * _rate("PM",        year)
+    prep_shipping   = ph["palletize_tech"].get(year, 0.5)  * _rate("Tech", year)
+    unistrut_cost   = (ph["unistrut_tech"].get(year, 6.0)  * _rate("Tech", year)) if part.unistrut else 0.0
+    purchaser_ovhd  = ph["purchaser_overhead"]           * _rate("Purchaser", year)
+    pm_ovhd         = ph["pm_overhead"]                  * _rate("PM",        year)
 
     pp_first = part.pp_internal + part.pp_external + part.first_part_additional_setup + part.ht_cost_per_part
 
-    scan_op = calc_operation_cost("scanning", part.scanning_time_hrs, s, year, cs)
-    cut_op  = calc_operation_cost("cutting",  part.cutting_time_hrs,  s, year, cs) if part.cutting_time_hrs > 0 else 0.0
+    scan_op = calc_operation_cost("first_scan", part.scanning_time_hrs, s, year, cs)
+    cut_op  = calc_operation_cost("first_cut", part.cutting_time_hrs,  s, year, cs) if part.cutting_time_hrs > 0 else 0.0
 
     total = (
         trials
@@ -217,35 +312,34 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
 
     # ── Category breakdown ───────────────────────────────────────────────────
     pif_f_l,  pif_f_r  = _op_labor_robot("pre_if_forming", part.forming_time_hrs,  s, year, cs)
-    pif_s_l,  pif_s_r  = _op_labor_robot("scanning",       part.scanning_time_hrs, s, year, cs)
+    pif_s_l,  pif_s_r  = _op_labor_robot("dup_scan",       part.scanning_time_hrs, s, year, cs)
     if_f_l,   if_f_r   = _op_labor_robot("if_forming",     part.forming_time_hrs,  s, year, cs)
-    if_s_l,   if_s_r   = _op_labor_robot("scanning",       part.scanning_time_hrs, s, year, cs)
-    fs_l,     fs_r     = _op_labor_robot("scanning",       part.scanning_time_hrs, s, year, cs)
-    fc_l,     fc_r     = _op_labor_robot("cutting",        part.cutting_time_hrs,  s, year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0)
+    if_s_l,   if_s_r   = _op_labor_robot("dup_scan",       part.scanning_time_hrs, s, year, cs)
+    fs_l,     fs_r     = _op_labor_robot("first_scan",     part.scanning_time_hrs, s, year, cs)
+    fc_l,     fc_r     = _op_labor_robot("first_cut",      part.cutting_time_hrs,  s, year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0)
 
     cat_labor = (
-        (pif_f_l + pif_s_l) * part.est_pre_if_procedures
-        + (if_f_l + if_s_l) * part.est_if_procedures
+        (pif_f_l + pif_s_l) * n_pre
+        + (if_f_l + if_s_l) * n_if
         + fs_l + fc_l
         + rpe_setup + purchaser_setup + pm_setup
         + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd
         + part.pp_internal + part.pp_external + part.first_part_additional_setup
     )
     cat_robot = (
-        (pif_f_r + pif_s_r) * part.est_pre_if_procedures
-        + (if_f_r + if_s_r) * part.est_if_procedures
+        (pif_f_r + pif_s_r) * n_pre
+        + (if_f_r + if_s_r) * n_if
         + fs_r + fc_r
     )
 
     # ── Detailed breakdown ───────────────────────────────────────────────────
     pif_rpe, pif_me, pif_tech  = _role_costs("pre_if_forming", year, cs)
-    sc_rpe,  sc_me,  sc_tech   = _role_costs("scanning",       year, cs)
+    sc_rpe,  sc_me,  sc_tech   = _role_costs("dup_scan",       year, cs)
     if_rpe,  if_me,  if_tech   = _role_costs("if_forming",     year, cs)
-    cut_rpe, cut_me, cut_tech  = _role_costs("cutting",        year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0, 0.0)
+    fs_rpe,  fs_me,  fs_tech   = _role_costs("first_scan",     year, cs)
+    cut_rpe, cut_me, cut_tech  = _role_costs("first_cut",      year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0, 0.0)
 
-    mat_per_trial = part.cost_per_sheet / part.parts_per_sheet
-    n_pre = part.est_pre_if_procedures
-    n_if  = part.est_if_procedures
+    mat_per_trial = mat_per_part  # already computed above
 
     detailed: list[tuple[str, float]] = []
 
@@ -272,7 +366,9 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
         _add("Sheet Material — IF", mat_per_trial * n_if)
 
     _add("Robot — Final Scan", fs_r)
-    _add("Tech — Final Scan",  fs_l)
+    _add("RPE — Final Scan",   fs_rpe)
+    _add("ME — Final Scan",    fs_me)
+    _add("Tech — Final Scan",  fs_tech)
     if part.cutting_time_hrs > 0:
         _add("Robot — Final Cut", fc_r)
         _add("RPE — Final Cut",   cut_rpe)
@@ -297,8 +393,8 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
     return {
         "total": total,
         "breakdown": {
-            "pre_if_trials":       pre_if_proc * part.est_pre_if_procedures,
-            "if_trials":           if_proc     * part.est_if_procedures,
+            "pre_if_trials":       pre_if_proc * n_pre,
+            "if_trials":           if_proc     * n_if,
             "rpe_setup":           rpe_setup,
             "purchaser_setup":     purchaser_setup,
             "pm_setup":            pm_setup,
@@ -312,7 +408,7 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
         "category_breakdown": {
             "labor":          cat_labor,
             "robot":          cat_robot,
-            "materials":      (part.cost_per_sheet / part.parts_per_sheet) * (part.est_pre_if_procedures + part.est_if_procedures),
+            "materials":      mat_per_trial * (n_pre + n_if),
             "heat_treat":     part.ht_cost_per_part,
             "shipping":       part.shipping_cost_per_part,
             "non_roboformed": 0.0,
@@ -324,27 +420,29 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
 def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
     s  = part.robot_strength
     cs = part.labor_constants
+    mat_per_part = part.cost_per_sheet / part.parts_per_sheet
     dup_proc = calc_procedure_cost("duplicate", part.forming_time_hrs, part.scanning_time_hrs,
-                                   part.cutting_time_hrs, part.cost_per_sheet, s, year, cs)
+                                   part.cutting_time_hrs, mat_per_part, s, year, cs)
 
-    prep_shipping  = PALLETIZE_TECH_HRS.get(year, 0.5) * _rate("Tech", year)
-    unistrut_cost  = (UNISTRUT_TECH_HRS.get(year, 6.0) * _rate("Tech", year)) if part.unistrut else 0.0
-    purchaser_ovhd = PURCHASER_OVERHEAD_HRS * _rate("Purchaser", year)
-    pm_ovhd        = PM_OVERHEAD_HRS        * _rate("PM",        year)
+    ph             = PART_HOURS_SETS.get(cs, PART_HOURS_FORMED_PARTS)
+    prep_shipping  = ph["palletize_tech"].get(year, 0.5)  * _rate("Tech", year)
+    unistrut_cost  = (ph["unistrut_tech"].get(year, 6.0)  * _rate("Tech", year)) if part.unistrut else 0.0
+    purchaser_ovhd = ph["purchaser_overhead"]           * _rate("Purchaser", year)
+    pm_ovhd        = ph["pm_overhead"]                  * _rate("PM",        year)
     pp_dup         = part.ht_cost_per_part + part.pp_internal + part.pp_external
 
     total = dup_proc + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd + pp_dup
 
     # ── Category breakdown ───────────────────────────────────────────────────
     df_l, df_r = _op_labor_robot("dup_forming", part.forming_time_hrs,  s, year, cs)
-    ds_l, ds_r = _op_labor_robot("scanning",    part.scanning_time_hrs, s, year, cs)
-    dc_l, dc_r = _op_labor_robot("cutting",     part.cutting_time_hrs,  s, year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0)
+    ds_l, ds_r = _op_labor_robot("dup_scan",    part.scanning_time_hrs, s, year, cs)
+    dc_l, dc_r = _op_labor_robot("dup_cut",     part.cutting_time_hrs,  s, year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0)
 
     # ── Detailed breakdown ───────────────────────────────────────────────────
     df_rpe, df_me, df_tech  = _role_costs("dup_forming", year, cs)
-    sc_rpe,  sc_me,  sc_tech = _role_costs("scanning",   year, cs)
-    dc_rpe, dc_me, dc_tech  = _role_costs("cutting",     year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0, 0.0)
-    mat_cost = part.cost_per_sheet / part.parts_per_sheet
+    sc_rpe,  sc_me,  sc_tech = _role_costs("dup_scan",   year, cs)
+    dc_rpe, dc_me, dc_tech  = _role_costs("dup_cut",     year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0, 0.0)
+    mat_cost = mat_per_part  # already computed above
 
     detailed: list[tuple[str, float]] = []
 
@@ -390,7 +488,7 @@ def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
         "category_breakdown": {
             "labor":          df_l + ds_l * n_scans + dc_l + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd + part.pp_internal + part.pp_external,
             "robot":          df_r + ds_r * n_scans + dc_r,
-            "materials":      part.cost_per_sheet / part.parts_per_sheet,
+            "materials":      mat_per_part,
             "heat_treat":     part.ht_cost_per_part,
             "shipping":       part.shipping_cost_per_part,
             "non_roboformed": 0.0,
@@ -455,10 +553,13 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
     parts_first = sum(p["first_assembly"] for p in part_costs)
     parts_dup   = sum(p["dup_assembly"]   for p in part_costs)
 
-    rpe_splitting = project.setup_splitting_hrs * _rate("RPE", year)
+    rpe_splitting     = project.setup_splitting_hrs * _rate("RPE", year)
+    proj_purchaser    = PROJECT_HOURS["purchaser"].get(year, 1.0) * _rate("Purchaser", year)
+    proj_pm           = PROJECT_HOURS["pm"].get(year, 1.0)        * _rate("PM",        year)
 
     first_assembly_total = (
         parts_first + rpe_splitting
+        + proj_purchaser + proj_pm
         + project.assembly_first_part_setup
         + project.assembly_pp_external
         + project.assembly_pp_internal
@@ -484,6 +585,7 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
             proj_cat[cat] += fc[cat] + dc[cat] * (qty - 1) + dc[cat] * qty * n_dup
     proj_cat["labor"] += (
         rpe_splitting
+        + proj_purchaser + proj_pm
         + project.assembly_first_part_setup
         + project.assembly_pp_internal * project.quantity_of_assemblies
         + project.assembly_pp_external * project.quantity_of_assemblies
@@ -495,7 +597,6 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
         sum(p.pp_external * p.quantity_per_assembly for p in parts) * project.quantity_of_assemblies
         + project.assembly_pp_external * project.quantity_of_assemblies
     )
-    # External non-roboformed parts are OSP-priced (their cost is in non_roboformed, not materials)
     ext_non_roboformed = sum(
         part_costs[i]["first_part_cost"] + part_costs[i]["dup_part_cost"] * (p.quantity_per_assembly - 1)
         + part_costs[i]["dup_part_cost"] * p.quantity_per_assembly * n_dup
@@ -524,9 +625,11 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
         "dup_assembly_price":         dup_assembly_price,
         "num_dup_assemblies":         n_dup,
         "rpe_splitting":              rpe_splitting,
+        "proj_purchaser":             proj_purchaser,
+        "proj_pm":                    proj_pm,
         "margin":                     margin,
         "osp_margin":                 osp_m,
         "part_details":               part_costs,
-        "robot_improvement":          _robot_improvement(year),
+        "robot_improvement":          {cat: ROBOT_IMPROVEMENT[cat].get(year, 1.0) for cat in ROBOT_IMPROVEMENT},
         "project_category_breakdown": proj_cat,
     }

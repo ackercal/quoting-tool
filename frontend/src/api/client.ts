@@ -39,7 +39,13 @@ export const api = {
 
   // Constants
   listConstants: () => req<Constant[]>('/constants'),
-  getLaborSets: () => req<Record<string, Record<string, Record<number, Record<string, number>>>>>('/constants/labor-sets'),
+  getLaborSets: () => req<{
+    labor_sets: Record<string, Record<string, Record<number, Record<string, number>>>>;
+    part_sets: Record<string, Record<string, unknown>>;
+    project_hours: Record<string, Record<number, number>>;
+    robot_improvement: Record<string, Record<number, number>>;
+    trial_reduction: Record<number, number>;
+  }>('/constants/labor-sets'),
   updateConstant: (key: string, value: number) =>
     req<Constant>(`/constants/${key}`, { method: 'PUT', body: JSON.stringify({ value }) }),
 };

@@ -130,8 +130,9 @@ export default function PartForm({ part, year, onUpdate, onDelete, onDuplicate }
       {/* ── Robot Time ────────────────────────────────────── */}
       <div className="section-heading">Active Robot Time</div>
       <div style={{ fontSize: 12, color: 'var(--gray-400)', lineHeight: 1.6, marginTop: -8, marginBottom: 12 }}>
-        <strong style={{ color: 'var(--gray-500)' }}>Skirted surface → run time estimator</strong> in this app is going to be built.
-        For now, use the Roboform run time calculator or find a similar previous part and find the run time in Retool.
+        <strong style={{ color: 'var(--gray-500)' }}>Enter current-year estimates.</strong>{' '}
+        Robot time improvements for future years are applied automatically — always input today's expected run times regardless of the year of execution.
+        Use the Roboform run time calculator or find a similar previous part in Retool.
       </div>
       <div className="form-grid">
         <div className="field">
@@ -165,6 +166,10 @@ export default function PartForm({ part, year, onUpdate, onDelete, onDuplicate }
 
       {/* ── Forming Trial Count ───────────────────────────── */}
       <div className="section-heading">Forming Trial Count</div>
+      <div style={{ fontSize: 12, color: 'var(--gray-400)', lineHeight: 1.6, marginTop: -8, marginBottom: 12 }}>
+        Enter your <strong style={{ color: 'var(--gray-500)' }}>current estimate</strong> based on today's capability.
+        If executing in a future year, the trial reduction factor for that year is applied automatically.
+      </div>
       <div className="form-grid">
         <div className="field">
           <label>Est. Pre-IF Trials <span className="required">*</span></label>
@@ -256,9 +261,10 @@ export default function PartForm({ part, year, onUpdate, onDelete, onDuplicate }
       <div className="section-heading">Other</div>
       <div className="form-grid" style={{ maxWidth: 640 }}>
         <div className="field">
-          <label>Engineering Set Up Hours – Skirt, Path Plan, Sim</label>
+          <label>Cumulative Engineering Set Up Hours for First Part</label>
           <NumInput min={0} step={0.25} value={form.setup_skirt_path_plan_sim_hrs}
             onChange={v => set('setup_skirt_path_plan_sim_hrs', v)} />
+          <div className="field-hint">Skirt, Path Plan, Sim, set up the cell</div>
         </div>
         <div className="field">
           <label>Shipping Cost per Part ($)</label>

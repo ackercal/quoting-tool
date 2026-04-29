@@ -365,7 +365,7 @@ export default function QuoteView({ projectId }: Props) {
 
   const { project, parts, part_details, total_cost, quoted_price,
           first_assembly_cost, dup_assembly_cost, first_assembly_price, dup_assembly_price,
-          num_dup_assemblies, rpe_splitting, margin, year_prices } = quote
+          num_dup_assemblies, rpe_splitting, proj_purchaser, proj_pm, margin, year_prices } = quote
 
   return (
     <div className="quote-page">
@@ -442,7 +442,7 @@ export default function QuoteView({ projectId }: Props) {
       {year_prices && <YearPriceChart yearPrices={year_prices} currentYear={project.year_of_execution} />}
 
       {/* ── Project-level overhead ── */}
-      <Section title="Project-Level Overhead (Cost)" total={rpe_splitting + project.assembly_first_part_setup + project.assembly_pp_internal + project.assembly_pp_external + (project.shipping_cost ?? 0)} totalLabel="total cost" defaultOpen={false}>
+      <Section title="Project-Level Overhead (Cost)" total={rpe_splitting + (proj_purchaser ?? 0) + (proj_pm ?? 0) + project.assembly_first_part_setup + project.assembly_pp_internal + project.assembly_pp_external + (project.shipping_cost ?? 0)} totalLabel="total cost" defaultOpen={false}>
         <table className="quote-table">
           <thead>
             <tr>
@@ -455,6 +455,16 @@ export default function QuoteView({ projectId }: Props) {
             <tr>
               <td>RPE Splitting / DFM Analysis</td>
               <td className="right">{$2(rpe_splitting)}</td>
+              <td className="right">—</td>
+            </tr>
+            <tr>
+              <td>Purchaser Overhead</td>
+              <td className="right">{$2(proj_purchaser ?? 0)}</td>
+              <td className="right">—</td>
+            </tr>
+            <tr>
+              <td>PM Overhead</td>
+              <td className="right">{$2(proj_pm ?? 0)}</td>
               <td className="right">—</td>
             </tr>
             <tr>

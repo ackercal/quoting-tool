@@ -194,7 +194,13 @@ export default function Home() {
   const [section, setSection]   = useState<Section>(initialSection)
   const [projects, setProjects] = useState<Project[]>([])
   const [constants, setConstants] = useState<Constant[]>([])
-  const [laborSets, setLaborSets] = useState<Record<string, Record<string, Record<number, Record<string, number>>>> | null>(null)
+  const [laborSets, setLaborSets] = useState<{
+    labor_sets: Record<string, Record<string, Record<number, Record<string, number>>>>;
+    part_sets: Record<string, Record<string, unknown>>;
+    project_hours: Record<string, Record<number, number>>;
+    robot_improvement: Record<string, Record<number, number>>;
+    trial_reduction: Record<number, number>;
+  } | null>(null)
   const [loading, setLoading]   = useState(true)
   const [showNew, setShowNew]   = useState(false)
   const [newName, setNewName]   = useState('')
@@ -407,15 +413,16 @@ export default function Home() {
             {!loading && laborSets && (() => {
               const flat  = flatConstants(constants)
               const getC  = (key: string)                => constants.find(c => c.key === key)?.value ?? 0
-              const getYr = (prefix: string, yr: number) => constants.find(c => c.key === `${prefix}_${yr}`)?.value ?? 0
 
-              const OPS = ['pre_if_forming', 'if_forming', 'dup_forming', 'scanning', 'cutting']
+              const OPS = ['pre_if_forming', 'if_forming', 'dup_forming', 'first_scan', 'dup_scan', 'first_cut', 'dup_cut']
               const OP_LABELS: Record<string, string> = {
-                pre_if_forming: 'Pre-IF Forming',
-                if_forming:     'IF Forming',
-                dup_forming:    'Dup Forming',
-                scanning:       'Scanning',
-                cutting:        'Cutting',
+                pre_if_forming: 'Forming — Pre-IF',
+                if_forming:     'Forming — IF',
+                dup_forming:    'Forming — Duplicate',
+                first_scan:     'Scanning — First',
+                dup_scan:       'Scanning — Duplicate',
+                first_cut:      'Cutting — First',
+                dup_cut:        'Cutting — Duplicate',
               }
               const ROLES = ['RPE', 'ME', 'Tech']
               const SET_LABELS: Record<string, string> = { formed_parts: 'Formed Parts', custom_auto: 'Custom Auto' }
@@ -430,10 +437,17 @@ export default function Home() {
 
               return (
                 <>
-                  {Object.entries(laborSets).map(([setKey, setData]) => {
-                    const halvd = setKey === 'custom_auto'
-                    const yv = (prefix: string, yr: number) => halvd ? getYr(prefix, yr) / 2 : getYr(prefix, yr)
-                    const fv = (key: string)                => halvd ? getC(key) / 2 : getC(key)
+                  {Object.entries(laborSets.labor_sets ?? laborSets).map(([setKey, setData]) => {
+                    const ph = ((laborSets.part_sets ?? {})[setKey] ?? {}) as Record<string, unknown>
+                    const getPhYear = (key: string, yr: number): number => {
+                      const v = ph[key]
+                      if (v && typeof v === 'object') return (v as Record<string, number>)[String(yr)] ?? 0
+                      return 0
+                    }
+                    const getPhFixed = (key: string): number => {
+                      const v = ph[key]
+                      return typeof v === 'number' ? v : 0
+                    }
 
                     return (
                       <div key={setKey} style={{ marginBottom: 28 }}>
@@ -463,38 +477,42 @@ export default function Home() {
                                   ))}
                                 </tr>
                               )))}
-                              <tr>
-                                <td>Robot Time Improvement</td>
-                                <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>multiplier</td>
-                                {YEARS.map(y => (
-                                  <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                                    {fmtVal(getC(`robot_improvement_${y}`))}
+                              {(['forming', 'scanning', 'cutting'] as const).map(cat => (
+                                <tr key={`robot_${cat}`}>
+                                  <td style={{ color: cat !== 'forming' ? 'transparent' : undefined }}>
+                                    {cat === 'forming' ? 'Robot Time Improvement' : ''}
                                   </td>
-                                ))}
-                              </tr>
+                                  <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</td>
+                                  {YEARS.map(y => (
+                                    <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                      {fmtVal(laborSets.robot_improvement?.[cat]?.[y] ?? 1)}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
 
                               {/* Part Level */}
                               {divider('Part Level')}
-                              {[
-                                { label: 'Prep for Shipping', role: 'Tech', prefix: 'palletize_Tech', scope: 'Every part' },
-                                { label: 'Unistrut',          role: 'Tech', prefix: 'unistrut_Tech',  scope: 'Every part' },
-                              ].map(row => (
-                                <tr key={row.prefix}>
-                                  <td>{row.label} <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>— {row.scope}</span></td>
-                                  <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{row.role}</td>
-                                  {YEARS.map(y => <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(yv(row.prefix, y))}</td>)}
-                                </tr>
-                              ))}
                               {([
-                                { label: 'Purchaser Setup',    role: 'Purchaser', key: 'purchaser_setup_hrs',    scope: 'First part only' },
-                                { label: 'PM Setup',           role: 'PM',        key: 'pm_setup_hrs',           scope: 'First part only' },
-                                { label: 'Purchaser Overhead', role: 'Purchaser', key: 'purchaser_overhead_hrs', scope: 'Every part' },
-                                { label: 'PM Overhead',        role: 'PM',        key: 'pm_overhead_hrs',        scope: 'Every part' },
+                                { label: 'Prep for Shipping', role: 'Tech',     key: 'palletize_tech', scope: 'Every part' },
+                                { label: 'Unistrut',          role: 'Tech',     key: 'unistrut_tech',  scope: 'Every part' },
                               ] as { label: string; role: string; key: string; scope: string }[]).map(row => (
                                 <tr key={row.key}>
                                   <td>{row.label} <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>— {row.scope}</span></td>
                                   <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{row.role}</td>
-                                  {YEARS.map(y => <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(fv(row.key))}</td>)}
+                                  {YEARS.map(y => <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(getPhYear(row.key, y))}</td>)}
+                                </tr>
+                              ))}
+                              {([
+                                { label: 'Purchaser Setup',    role: 'Purchaser', key: 'purchaser_setup',    scope: 'First part only' },
+                                { label: 'PM Setup',           role: 'PM',        key: 'pm_setup',           scope: 'First part only' },
+                                { label: 'Purchaser Overhead', role: 'Purchaser', key: 'purchaser_overhead', scope: 'Every part' },
+                                { label: 'PM Overhead',        role: 'PM',        key: 'pm_overhead',        scope: 'Every part' },
+                              ] as { label: string; role: string; key: string; scope: string }[]).map(row => (
+                                <tr key={row.key}>
+                                  <td>{row.label} <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>— {row.scope}</span></td>
+                                  <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{row.role}</td>
+                                  {YEARS.map(y => <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(getPhFixed(row.key))}</td>)}
                                 </tr>
                               ))}
                             </tbody>
@@ -503,6 +521,50 @@ export default function Home() {
                       </div>
                     )
                   })}
+
+                  {/* Project Level — global, not set-specific */}
+                  <div style={{ marginBottom: 28 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                      Project Level
+                    </div>
+                    <div className="quote-section">
+                      <table className="quote-table">
+                        <thead>
+                          <tr>
+                            <th>Item</th>
+                            <th>Role</th>
+                            {YEARS.map(y => <th key={y} className="right">{y}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {divider('Project Level — First assembly only')}
+                          {([
+                            { label: 'Purchaser Overhead', role: 'Purchaser', key: 'purchaser' },
+                            { label: 'PM Overhead',        role: 'PM',        key: 'pm' },
+                          ] as { label: string; role: string; key: string }[]).map(row => (
+                            <tr key={row.key}>
+                              <td>{row.label}</td>
+                              <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{row.role}</td>
+                              {YEARS.map(y => (
+                                <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                  {fmtVal(laborSets.project_hours?.[row.key]?.[y] ?? 0)}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                          <tr>
+                            <td>Trial Reduction <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>— Pre-IF &amp; IF procedures × factor, rounded up</span></td>
+                            <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>multiplier</td>
+                            {YEARS.map(y => (
+                              <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                {fmtVal(laborSets.trial_reduction?.[y] ?? 1)}
+                              </td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
                   {/* Hourly Rates — global, not set-specific */}
                   <div style={{ marginBottom: 28 }}>

@@ -12,6 +12,10 @@ from calculations import (
     HOURLY_RATES,
     LABOR_HOURS,
     LABOR_HOURS_SETS,
+    PART_HOURS_SETS,
+    PROJECT_HOURS,
+    ROBOT_IMPROVEMENT,
+    TRIAL_REDUCTION,
     UNISTRUT_TECH_HRS,
     PALLETIZE_TECH_HRS,
 )
@@ -425,8 +429,14 @@ def list_constants():
 
 @app.get("/constants/labor-sets")
 def get_labor_sets():
-    """Returns both labor hour constant sets for display in dev tools."""
-    return LABOR_HOURS_SETS
+    """Returns labor hour constant sets, part hour sets, project hours, robot improvement, and trial reduction."""
+    return {
+        "labor_sets":        LABOR_HOURS_SETS,
+        "part_sets":         PART_HOURS_SETS,
+        "project_hours":     PROJECT_HOURS,
+        "robot_improvement": ROBOT_IMPROVEMENT,
+        "trial_reduction":   TRIAL_REDUCTION,
+    }
 
 
 @app.put("/constants/{key}")
