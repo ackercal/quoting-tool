@@ -357,6 +357,8 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
         _add("ME — Pre-IF Forming",     pif_me   * n_pre)
         _add("Tech — Pre-IF Forming",   pif_tech * n_pre)
         _add("Robot — Pre-IF Scanning", pif_s_r  * n_pre)
+        _add("RPE — Pre-IF Scanning",   sc_rpe   * n_pre)
+        _add("ME — Pre-IF Scanning",    sc_me    * n_pre)
         _add("Tech — Pre-IF Scanning",  sc_tech  * n_pre)
         _add("Sheet Material — Pre-IF", mat_per_trial * n_pre)
 
@@ -366,6 +368,8 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
         _add("ME — IF Forming",     if_me   * n_if)
         _add("Tech — IF Forming",   if_tech * n_if)
         _add("Robot — IF Scanning", if_s_r  * n_if)
+        _add("RPE — IF Scanning",   sc_rpe  * n_if)
+        _add("ME — IF Scanning",    sc_me   * n_if)
         _add("Tech — IF Scanning",  sc_tech * n_if)
         _add("Sheet Material — IF", mat_per_trial * n_if)
 
@@ -455,9 +459,12 @@ def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
             detailed.append((lbl, val))
 
     _add("Robot — Forming", df_r)
+    _add("RPE — Forming",   df_rpe)
     _add("ME — Forming",    df_me)
     _add("Tech — Forming",  df_tech)
     _add("Robot — Scan",    ds_r)
+    _add("RPE — Scan",      sc_rpe)
+    _add("ME — Scan",       sc_me)
     _add("Tech — Scan",     sc_tech)
     if part.cutting_time_hrs > 0:
         _add("Robot — Pre-Cut Scan", ds_r)
