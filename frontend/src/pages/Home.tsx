@@ -202,17 +202,50 @@ export default function Home() {
     trial_reduction: Record<number, number>;
   } | null>(null)
   const [loading, setLoading]   = useState(true)
-  const [showNew, setShowNew]   = useState(false)
-  const [newName, setNewName]   = useState('')
-  const [creating, setCreating] = useState(false)
-  const [filter, setFilter]     = useState<Filter>('active')
+  const [showNew, setShowNew]       = useState(false)
+  const [newName, setNewName]       = useState('')
+  const [creating, setCreating]     = useState(false)
+  const [openMenu, setOpenMenu]     = useState<number | null>(null)
+  const [duplicating, setDuplicating] = useState<number | null>(null)
+  const [deleting, setDeleting]     = useState<number | null>(null)
+  const [filter, setFilter]         = useState<Filter>('active')
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const close = () => setOpenMenu(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [])
 
   useEffect(() => {
     Promise.all([api.listProjects(), api.listConstants(), api.getLaborSets()])
       .then(([p, c, ls]) => { setProjects(p); setConstants(c); setLaborSets(ls) })
       .finally(() => setLoading(false))
   }, [])
+
+  async function handleDuplicate(e: React.MouseEvent, id: number) {
+    e.stopPropagation()
+    setOpenMenu(null)
+    setDuplicating(id)
+    try {
+      const copy = await api.duplicateProject(id)
+      setProjects(prev => [copy, ...prev])
+    } finally {
+      setDuplicating(null)
+    }
+  }
+
+  async function handleDelete(e: React.MouseEvent, id: number) {
+    e.stopPropagation()
+    setOpenMenu(null)
+    setDeleting(id)
+    try {
+      await api.deleteProject(id)
+      setProjects(prev => prev.filter(p => p.id !== id))
+    } finally {
+      setDeleting(null)
+    }
+  }
 
   async function handleCreate() {
     if (!newName.trim()) return
@@ -335,9 +368,45 @@ export default function Home() {
                     <div key={p.id} className="project-card" onClick={() => navigate(`/projects/${p.id}`)}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
                         <div className="project-card-name" style={{ marginBottom: 0 }}>{p.name}</div>
-                        {p.is_active === 0 && (
-                          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray-400)', background: 'var(--gray-100)', borderRadius: 4, padding: '2px 6px', flexShrink: 0 }}>Inactive</div>
-                        )}
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                          {p.is_active === 0 && (
+                            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray-400)', background: 'var(--gray-100)', borderRadius: 4, padding: '2px 6px' }}>Inactive</div>
+                          )}
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              onClick={e => { e.stopPropagation(); setOpenMenu(openMenu === p.id ? null : p.id) }}
+                              style={{ background: 'none', border: 'none', borderRadius: 5, padding: '2px 6px', cursor: 'pointer', color: 'var(--gray-400)', fontSize: 18, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                            >
+                              {(duplicating === p.id || deleting === p.id) ? '…' : '⋮'}
+                            </button>
+                            {openMenu === p.id && (
+                              <div
+                                onClick={e => e.stopPropagation()}
+                                style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.10)', zIndex: 100, minWidth: 140, overflow: 'hidden' }}
+                              >
+                                <button
+                                  onClick={e => handleDuplicate(e, p.id)}
+                                  style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: 8 }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--gray-100)')}
+                                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                >
+                                  <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                                  Duplicate
+                                </button>
+                                <div style={{ height: 1, background: 'var(--gray-200)' }} />
+                                <button
+                                  onClick={e => handleDelete(e, p.id)}
+                                  style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: '#c0392b', display: 'flex', alignItems: 'center', gap: 8 }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = '#fff5f5')}
+                                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                >
+                                  <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                       <div style={{ display: 'flex', gap: 20, marginBottom: 12 }}>
                         {[

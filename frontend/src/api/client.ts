@@ -25,6 +25,8 @@ export const api = {
     req<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteProject: (id: number) =>
     req<void>(`/projects/${id}`, { method: 'DELETE' }),
+  duplicateProject: (id: number) =>
+    req<Project>(`/projects/${id}/duplicate`, { method: 'POST' }),
 
   // Parts
   createPart: (projectId: number, data: Partial<Part>) =>

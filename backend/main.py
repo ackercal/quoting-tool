@@ -246,6 +246,63 @@ def delete_project(pid: int):
     conn.close()
 
 
+@app.post("/projects/{pid}/duplicate", status_code=201)
+def duplicate_project(pid: int):
+    conn = get_conn()
+    src = row_to_dict(conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone())
+    if not src:
+        raise HTTPException(404, "Project not found")
+    parts = [row_to_dict(r) for r in conn.execute(
+        "SELECT * FROM parts WHERE project_id=? ORDER BY sort_order, id", (pid,)
+    ).fetchall()]
+
+    c = conn.execute(
+        """INSERT INTO projects
+           (name,quantity_of_assemblies,material_type,ht_type,internal_margin,
+            year_of_execution,assembly_pp_internal,assembly_pp_external,
+            assembly_first_part_setup,setup_splitting_hrs,shipping_cost,osp_margin,
+            labor_constants,internal_notes,is_active)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (f"Copy of {src['name']}", src['quantity_of_assemblies'], src['material_type'],
+         src['ht_type'], src['internal_margin'], src['year_of_execution'],
+         src['assembly_pp_internal'], src['assembly_pp_external'],
+         src['assembly_first_part_setup'], src['setup_splitting_hrs'],
+         src['shipping_cost'], src['osp_margin'], src['labor_constants'],
+         src['internal_notes'], src['is_active']),
+    )
+    new_pid = c.lastrowid
+
+    for pt in parts:
+        conn.execute(
+            """INSERT INTO parts
+               (project_id,name,quantity_per_assembly,skirted_geometry_file,
+                minimum_thickness_mm,on_cell_surface_finish_ra,profile_tolerance_mm,
+                forming_time_hrs,scanning_time_hrs,cutting_time_hrs,stress_relief_time_hrs,
+                est_pre_if_procedures,est_if_procedures,sheet_type,parts_per_sheet,
+                cost_per_sheet,ht_cost_per_part,unistrut,robot_strength,
+                pp_internal,pp_external,first_part_additional_setup,
+                setup_skirt_path_plan_sim_hrs,shipping_cost_per_part,
+                manufacturing_method,other_mfg_internal,other_mfg_cost,other_mfg_cost_dup,
+                custom_robot_cost_per_hr,internal_notes,sort_order)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (new_pid, pt['name'], pt['quantity_per_assembly'], pt['skirted_geometry_file'],
+             pt['minimum_thickness_mm'], pt['on_cell_surface_finish_ra'], pt['profile_tolerance_mm'],
+             pt['forming_time_hrs'], pt['scanning_time_hrs'], pt['cutting_time_hrs'],
+             pt['stress_relief_time_hrs'], pt['est_pre_if_procedures'], pt['est_if_procedures'],
+             pt['sheet_type'], pt['parts_per_sheet'], pt['cost_per_sheet'], pt['ht_cost_per_part'],
+             pt['unistrut'], pt['robot_strength'], pt['pp_internal'], pt['pp_external'],
+             pt['first_part_additional_setup'], pt['setup_skirt_path_plan_sim_hrs'],
+             pt['shipping_cost_per_part'], pt['manufacturing_method'], pt['other_mfg_internal'],
+             pt['other_mfg_cost'], pt['other_mfg_cost_dup'], pt.get('custom_robot_cost_per_hr'),
+             pt['internal_notes'], pt['sort_order']),
+        )
+
+    conn.commit()
+    new_proj = row_to_dict(conn.execute("SELECT * FROM projects WHERE id=?", (new_pid,)).fetchone())
+    conn.close()
+    return new_proj
+
+
 # ── Parts ─────────────────────────────────────────────────────────────────────
 
 @app.post("/projects/{pid}/parts", status_code=201)
