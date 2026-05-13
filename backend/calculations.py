@@ -4,7 +4,8 @@ Pricing calculations derived from quote_calc_final_labor_forecasts.xlsx (April 2
   Per-operation robot improvement factors, trial reduction constants
 """
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 # ── Forecast: Hourly rates (same across years for now) ────────────────────────
 HOURLY_RATES: dict[str, dict[int, float]] = {
@@ -175,6 +176,12 @@ PM_OVERHEAD_HRS        = 0.25
 def _rate(role: str, year: int) -> float:
     return HOURLY_RATES[role].get(year) or HOURLY_RATES[role][2026]
 
+def _robot_rate(strength: str, year: int, custom_rate: Optional[float] = None) -> float:
+    """Return hourly robot rate, using custom_rate if strength is 'Custom' and a rate is provided."""
+    if strength == "Custom" and custom_rate is not None:
+        return custom_rate
+    return _rate(strength, year)
+
 def _get_labor(op: str, year: int, constants_set: str = "formed_parts") -> dict[str, float]:
     table = LABOR_HOURS_SETS.get(constants_set, LABOR_HOURS_FORMED_PARTS)
     op_data = table.get(op, {})
@@ -198,7 +205,7 @@ def _role_costs(op: str, year: int, constants_set: str = "formed_parts") -> tupl
 # robot_hrs = user's CURRENT (2026-baseline) estimate.
 # Effective robot hrs = robot_hrs * improvement_factor[year]
 
-def calc_operation_cost(op: str, robot_hrs: float, strength: str, year: int, constants_set: str = "formed_parts") -> float:
+def calc_operation_cost(op: str, robot_hrs: float, strength: str, year: int, constants_set: str = "formed_parts", custom_robot_rate: Optional[float] = None) -> float:
     if robot_hrs == 0:
         return 0.0
     hrs = _get_labor(op, year, constants_set)
@@ -208,7 +215,7 @@ def calc_operation_cost(op: str, robot_hrs: float, strength: str, year: int, con
         + hrs["Tech"]* _rate("Tech", year)
     )
     effective_robot_hrs = robot_hrs * _robot_improvement(op, year)
-    robot_cost = effective_robot_hrs * _rate(strength, year)
+    robot_cost = effective_robot_hrs * _robot_rate(strength, year, custom_robot_rate)
     return labor + robot_cost
 
 
@@ -223,11 +230,12 @@ def calc_procedure_cost(
     strength: str,
     year: int,
     constants_set: str = "formed_parts",
+    custom_robot_rate: Optional[float] = None,
 ) -> float:
     op_map = {"pre_if": "pre_if_forming", "if_proc": "if_forming", "duplicate": "dup_forming"}
-    forming_cost = calc_operation_cost(op_map[proc_type], forming_hrs, strength, year, constants_set)
-    scan_cost    = calc_operation_cost("dup_scan", scanning_hrs, strength, year, constants_set)
-    cut_cost     = calc_operation_cost("dup_cut",  cutting_hrs,  strength, year, constants_set) if cutting_hrs > 0 else 0.0
+    forming_cost = calc_operation_cost(op_map[proc_type], forming_hrs, strength, year, constants_set, custom_robot_rate)
+    scan_cost    = calc_operation_cost("dup_scan", scanning_hrs, strength, year, constants_set, custom_robot_rate)
+    cut_cost     = calc_operation_cost("dup_cut",  cutting_hrs,  strength, year, constants_set, custom_robot_rate) if cutting_hrs > 0 else 0.0
 
     if proc_type in ("pre_if", "if_proc"):
         ops = forming_cost + scan_cost
@@ -262,21 +270,23 @@ class PartInputs:
     other_mfg_cost: float = 0
     other_mfg_cost_dup: float = 0
     labor_constants: str = "formed_parts"
+    custom_robot_rate: Optional[float] = None
 
 
-def _op_labor_robot(op: str, robot_hrs: float, strength: str, year: int, constants_set: str = "formed_parts") -> tuple[float, float]:
+def _op_labor_robot(op: str, robot_hrs: float, strength: str, year: int, constants_set: str = "formed_parts", custom_robot_rate: Optional[float] = None) -> tuple[float, float]:
     """Returns (labor_cost, robot_cost) for a single operation. Returns (0, 0) if robot_hrs == 0."""
     if robot_hrs == 0:
         return 0.0, 0.0
     lh = _get_labor(op, year, constants_set)
     labor = lh["RPE"] * _rate("RPE", year) + lh["ME"] * _rate("ME", year) + lh["Tech"] * _rate("Tech", year)
-    robot = robot_hrs * _robot_improvement(op, year) * _rate(strength, year)
+    robot = robot_hrs * _robot_improvement(op, year) * _robot_rate(strength, year, custom_robot_rate)
     return labor, robot
 
 
 def calc_first_part_cost(part: PartInputs, year: int) -> dict:
-    s  = part.robot_strength
-    cs = part.labor_constants
+    s   = part.robot_strength
+    cs  = part.labor_constants
+    crr = part.custom_robot_rate
 
     # Apply trial reduction (round up to nearest whole number)
     trial_factor = TRIAL_REDUCTION.get(year, 1.0)
@@ -285,9 +295,9 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
 
     mat_per_part = part.cost_per_sheet / part.parts_per_sheet
     pre_if_proc = calc_procedure_cost("pre_if",  part.forming_time_hrs, part.scanning_time_hrs,
-                                      part.cutting_time_hrs, mat_per_part, s, year, cs)
+                                      part.cutting_time_hrs, mat_per_part, s, year, cs, crr)
     if_proc     = calc_procedure_cost("if_proc", part.forming_time_hrs, part.scanning_time_hrs,
-                                      part.cutting_time_hrs, mat_per_part, s, year, cs)
+                                      part.cutting_time_hrs, mat_per_part, s, year, cs, crr)
 
     trials = pre_if_proc * n_pre + if_proc * n_if
 
@@ -302,8 +312,8 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
 
     pp_first = part.pp_internal + part.pp_external + part.first_part_additional_setup + part.ht_cost_per_part
 
-    scan_op = calc_operation_cost("first_scan", part.scanning_time_hrs, s, year, cs)
-    cut_op  = calc_operation_cost("first_cut", part.cutting_time_hrs,  s, year, cs) if part.cutting_time_hrs > 0 else 0.0
+    scan_op = calc_operation_cost("first_scan", part.scanning_time_hrs, s, year, cs, crr)
+    cut_op  = calc_operation_cost("first_cut", part.cutting_time_hrs,  s, year, cs, crr) if part.cutting_time_hrs > 0 else 0.0
 
     total = (
         trials
@@ -315,12 +325,12 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
     )
 
     # ── Category breakdown ───────────────────────────────────────────────────
-    pif_f_l,  pif_f_r  = _op_labor_robot("pre_if_forming", part.forming_time_hrs,  s, year, cs)
-    pif_s_l,  pif_s_r  = _op_labor_robot("dup_scan",       part.scanning_time_hrs, s, year, cs)
-    if_f_l,   if_f_r   = _op_labor_robot("if_forming",     part.forming_time_hrs,  s, year, cs)
-    if_s_l,   if_s_r   = _op_labor_robot("dup_scan",       part.scanning_time_hrs, s, year, cs)
-    fs_l,     fs_r     = _op_labor_robot("first_scan",     part.scanning_time_hrs, s, year, cs)
-    fc_l,     fc_r     = _op_labor_robot("first_cut",      part.cutting_time_hrs,  s, year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0)
+    pif_f_l,  pif_f_r  = _op_labor_robot("pre_if_forming", part.forming_time_hrs,  s, year, cs, crr)
+    pif_s_l,  pif_s_r  = _op_labor_robot("dup_scan",       part.scanning_time_hrs, s, year, cs, crr)
+    if_f_l,   if_f_r   = _op_labor_robot("if_forming",     part.forming_time_hrs,  s, year, cs, crr)
+    if_s_l,   if_s_r   = _op_labor_robot("dup_scan",       part.scanning_time_hrs, s, year, cs, crr)
+    fs_l,     fs_r     = _op_labor_robot("first_scan",     part.scanning_time_hrs, s, year, cs, crr)
+    fc_l,     fc_r     = _op_labor_robot("first_cut",      part.cutting_time_hrs,  s, year, cs, crr) if part.cutting_time_hrs > 0 else (0.0, 0.0)
 
     cat_labor = (
         (pif_f_l + pif_s_l) * n_pre
@@ -426,11 +436,12 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
 
 
 def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
-    s  = part.robot_strength
-    cs = part.labor_constants
+    s   = part.robot_strength
+    cs  = part.labor_constants
+    crr = part.custom_robot_rate
     mat_per_part = part.cost_per_sheet / part.parts_per_sheet
     dup_proc = calc_procedure_cost("duplicate", part.forming_time_hrs, part.scanning_time_hrs,
-                                   part.cutting_time_hrs, mat_per_part, s, year, cs)
+                                   part.cutting_time_hrs, mat_per_part, s, year, cs, crr)
 
     ph             = PART_HOURS_SETS.get(cs, PART_HOURS_FORMED_PARTS)
     prep_shipping  = ph["palletize_tech"].get(year, 0.5)  * _rate("Tech", year)
@@ -442,9 +453,9 @@ def calc_duplicate_part_cost(part: PartInputs, year: int) -> dict:
     total = dup_proc + prep_shipping + unistrut_cost + purchaser_ovhd + pm_ovhd + pp_dup
 
     # ── Category breakdown ───────────────────────────────────────────────────
-    df_l, df_r = _op_labor_robot("dup_forming", part.forming_time_hrs,  s, year, cs)
-    ds_l, ds_r = _op_labor_robot("dup_scan",    part.scanning_time_hrs, s, year, cs)
-    dc_l, dc_r = _op_labor_robot("dup_cut",     part.cutting_time_hrs,  s, year, cs) if part.cutting_time_hrs > 0 else (0.0, 0.0)
+    df_l, df_r = _op_labor_robot("dup_forming", part.forming_time_hrs,  s, year, cs, crr)
+    ds_l, ds_r = _op_labor_robot("dup_scan",    part.scanning_time_hrs, s, year, cs, crr)
+    dc_l, dc_r = _op_labor_robot("dup_cut",     part.cutting_time_hrs,  s, year, cs, crr) if part.cutting_time_hrs > 0 else (0.0, 0.0)
 
     # ── Detailed breakdown ───────────────────────────────────────────────────
     df_rpe, df_me, df_tech  = _role_costs("dup_forming", year, cs) if part.forming_time_hrs  > 0 else (0.0, 0.0, 0.0)

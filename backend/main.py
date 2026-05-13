@@ -90,6 +90,7 @@ class PartCreate(BaseModel):
     other_mfg_internal: int = 1
     other_mfg_cost: float = 0
     other_mfg_cost_dup: float = 0
+    custom_robot_cost_per_hr: Optional[float] = None
     internal_notes: Optional[str] = None
     sort_order: int = 0
 
@@ -161,6 +162,7 @@ def list_projects():
                     other_mfg_cost=pt.get("other_mfg_cost", 0),
                     other_mfg_cost_dup=pt.get("other_mfg_cost_dup", 0),
                     labor_constants=proj.get("labor_constants", "formed_parts"),
+                    custom_robot_rate=pt.get("custom_robot_cost_per_hr"),
                 ) for pt in parts_data]
                 quote = calc_project_quote(proj_inputs, part_inputs)
                 proj["quoted_price"] = quote["quoted_price"]
@@ -262,8 +264,8 @@ def create_part(pid: int, data: PartCreate):
             pp_internal,pp_external,first_part_additional_setup,
             setup_skirt_path_plan_sim_hrs,shipping_cost_per_part,
             manufacturing_method,other_mfg_internal,other_mfg_cost,other_mfg_cost_dup,
-            internal_notes,sort_order)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            custom_robot_cost_per_hr,internal_notes,sort_order)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (pid, data.name, data.quantity_per_assembly, data.skirted_geometry_file,
          data.minimum_thickness_mm, data.on_cell_surface_finish_ra, data.profile_tolerance_mm,
          data.forming_time_hrs, data.scanning_time_hrs, data.cutting_time_hrs,
@@ -272,7 +274,8 @@ def create_part(pid: int, data: PartCreate):
          data.unistrut, data.robot_strength, data.pp_internal, data.pp_external,
          data.first_part_additional_setup, data.setup_skirt_path_plan_sim_hrs,
          data.shipping_cost_per_part, data.manufacturing_method, data.other_mfg_internal,
-         data.other_mfg_cost, data.other_mfg_cost_dup, data.internal_notes, data.sort_order),
+         data.other_mfg_cost, data.other_mfg_cost_dup, data.custom_robot_cost_per_hr,
+         data.internal_notes, data.sort_order),
     )
     part_id = c.lastrowid
     conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (pid,))
@@ -295,7 +298,7 @@ def update_part(part_id: int, data: PartUpdate):
            pp_internal=?,pp_external=?,first_part_additional_setup=?,
            setup_skirt_path_plan_sim_hrs=?,shipping_cost_per_part=?,
            manufacturing_method=?,other_mfg_internal=?,other_mfg_cost=?,other_mfg_cost_dup=?,
-           internal_notes=?,sort_order=?,
+           custom_robot_cost_per_hr=?,internal_notes=?,sort_order=?,
            updated_at=datetime('now')
            WHERE id=?""",
         (data.name, data.quantity_per_assembly, data.skirted_geometry_file,
@@ -306,7 +309,8 @@ def update_part(part_id: int, data: PartUpdate):
          data.unistrut, data.robot_strength, data.pp_internal, data.pp_external,
          data.first_part_additional_setup, data.setup_skirt_path_plan_sim_hrs,
          data.shipping_cost_per_part, data.manufacturing_method, data.other_mfg_internal,
-         data.other_mfg_cost, data.other_mfg_cost_dup, data.internal_notes, data.sort_order, part_id),
+         data.other_mfg_cost, data.other_mfg_cost_dup, data.custom_robot_cost_per_hr,
+         data.internal_notes, data.sort_order, part_id),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM parts WHERE id=?", (part_id,)).fetchone()
@@ -385,6 +389,7 @@ def get_quote(pid: int):
             other_mfg_cost=pt.get("other_mfg_cost", 0),
             other_mfg_cost_dup=pt.get("other_mfg_cost_dup", 0),
             labor_constants=lc,
+            custom_robot_rate=pt.get("custom_robot_cost_per_hr"),
         ))
 
     result = calc_project_quote(proj_inputs, part_inputs)

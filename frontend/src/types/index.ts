@@ -52,6 +52,7 @@ export interface Part {
   other_mfg_internal: number;
   other_mfg_cost: number;
   other_mfg_cost_dup: number;
+  custom_robot_cost_per_hr: number | null;
   internal_notes: string | null;
   sort_order: number;
   created_at: string;

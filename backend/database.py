@@ -102,6 +102,7 @@ def init_db():
         "ALTER TABLE parts ADD COLUMN other_mfg_cost REAL NOT NULL DEFAULT 0",
         "ALTER TABLE parts ADD COLUMN other_mfg_cost_dup REAL NOT NULL DEFAULT 0",
         "ALTER TABLE projects ADD COLUMN labor_constants TEXT NOT NULL DEFAULT 'formed_parts'",
+        "ALTER TABLE parts ADD COLUMN custom_robot_cost_per_hr REAL",
     ]:
         try:
             c.execute(migration)

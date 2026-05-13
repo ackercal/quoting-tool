@@ -18,6 +18,7 @@ const ROBOT_STRENGTHS: { value: string; label: string }[] = [
   { value: 'Small',  label: 'Small (KR500, M900)' },
   { value: 'Medium', label: 'Medium (KR1000, KR1500, M1000)' },
   { value: 'Large',  label: 'Large (M2000)' },
+  { value: 'Custom', label: 'Custom Cost — R&D' },
 ]
 
 export default function PartForm({ part, year, onUpdate, onDelete, onDuplicate }: Props) {
@@ -155,14 +156,40 @@ export default function PartForm({ part, year, onUpdate, onDelete, onDuplicate }
 
       {/* ── Robot Type ────────────────────────────────────── */}
       <div className="section-heading">Robot Type</div>
-      <div className="form-grid single" style={{ maxWidth: 280 }}>
-        <div className="field">
+      <div className="form-grid" style={{ alignItems: 'flex-start' }}>
+        <div className="field" style={{ maxWidth: 280 }}>
           <label>Strength <span className="required">*</span></label>
-          <select value={form.robot_strength} onChange={e => set('robot_strength', e.target.value)}>
+          <select value={form.robot_strength} onChange={e => {
+            set('robot_strength', e.target.value)
+            if (e.target.value !== 'Custom') set('custom_robot_cost_per_hr', null)
+          }}>
             {ROBOT_STRENGTHS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
+        {form.robot_strength === 'Custom' && (
+          <div className="field" style={{ maxWidth: 220 }}>
+            <label>Custom Hourly Rate ($/hr) <span className="required">*</span></label>
+            <div className="field-dollar">
+              <NumInput min={0} step={0.01} value={form.custom_robot_cost_per_hr ?? 0}
+                onChange={v => set('custom_robot_cost_per_hr', v)} />
+            </div>
+          </div>
+        )}
       </div>
+      {form.robot_strength === 'Custom' && (
+        <div style={{
+          display: 'flex', gap: 10, alignItems: 'flex-start',
+          background: '#fffbeb', border: '1px solid #f59e0b',
+          borderRadius: 6, padding: '10px 14px', marginTop: 4, marginBottom: 4,
+          fontSize: 12, color: '#92400e', lineHeight: 1.55, maxWidth: 640,
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠</span>
+          <span>
+            <strong>Use with caution.</strong> Finance and Product have carefully calculated the standard
+            robot hourly rates — those values are highly recommended. Only override for R&amp;D or exceptional scenarios.
+          </span>
+        </div>
+      )}
 
       {/* ── Forming Trial Count ───────────────────────────── */}
       <div className="section-heading">Forming Trial Count</div>
