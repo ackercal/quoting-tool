@@ -95,6 +95,36 @@ function SheetCostCalculator() {
         Search for a sheet that is <strong>144 × 60 inches</strong> in whatever thickness and alloy you need,
         then set the order quantity to <strong>10 sheets</strong> to get a representative per-sheet price — unless it is a small part with a low order quantity, in which case adjust accordingly.
       </p>
+
+      <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--gray-200)' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-700)', marginBottom: 6 }}>Previous Quotes — Specialty Materials</div>
+        <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 14, lineHeight: 1.6 }}>
+          For more rare materials, standard suppliers may not have pricing readily available. The following are real quotes we have received in the past as a reference point.
+        </p>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--gray-100)' }}>
+              <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Supplier</th>
+              <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dimensions (T × W × L inches)</th>
+              <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Qty</th>
+              <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Price / Sheet</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { supplier: 'Re-Steel', dims: '0.125 × 48.0 × 96', qty: 3, price: 5280 },
+              { supplier: 'Re-Steel', dims: '0.125 × 35.0 × 105', qty: 3, price: 3500 },
+            ].map((row, i) => (
+              <tr key={i} style={{ borderBottom: '1px solid var(--gray-200)' }}>
+                <td style={{ padding: '9px 12px', color: 'var(--gray-700)', fontWeight: 500 }}>{row.supplier}</td>
+                <td style={{ padding: '9px 12px', color: 'var(--gray-600)', fontFamily: 'monospace', fontSize: 12 }}>{row.dims}"</td>
+                <td style={{ padding: '9px 12px', color: 'var(--gray-600)', textAlign: 'right' }}>{row.qty}</td>
+                <td style={{ padding: '9px 12px', color: 'var(--gray-700)', fontWeight: 600, textAlign: 'right' }}>${row.price.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
