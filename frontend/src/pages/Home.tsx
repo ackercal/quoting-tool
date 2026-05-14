@@ -104,22 +104,26 @@ function SheetCostCalculator() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--gray-100)' }}>
-              <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Supplier</th>
+              <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Material Type</th>
               <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dimensions (T × W × L inches)</th>
               <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Qty</th>
               <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Price / Sheet</th>
+              <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600, color: 'var(--gray-600)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Supplier</th>
             </tr>
           </thead>
           <tbody>
             {[
-              { supplier: 'Re-Steel', dims: '0.125 × 48.0 × 96', qty: 3, price: 5280 },
-              { supplier: 'Re-Steel', dims: '0.125 × 35.0 × 105', qty: 3, price: 3500 },
+              { material: 'Steel Sheet', supplier: 'Re-Steel', dims: '0.125 × 48.0 × 96', qty: 3, price: 5280 },
+              { material: 'Steel Sheet', supplier: 'Re-Steel', dims: '0.125 × 35.0 × 105', qty: 3, price: 3500 },
+              { material: '6061-O Aluminum', supplier: 'A. M. Castle & Co. — West US', dims: '0.160 × 60 × 144', qty: 120, price: 549.20 },
+              { material: '6061-O Aluminum', supplier: 'A. M. Castle & Co. — West US', dims: '0.190 × 60 × 144', qty: 107, price: 683.33 },
             ].map((row, i) => (
               <tr key={i} style={{ borderBottom: '1px solid var(--gray-200)' }}>
-                <td style={{ padding: '9px 12px', color: 'var(--gray-700)', fontWeight: 500 }}>{row.supplier}</td>
+                <td style={{ padding: '9px 12px', color: 'var(--gray-700)', fontWeight: 500 }}>{row.material}</td>
                 <td style={{ padding: '9px 12px', color: 'var(--gray-600)', fontFamily: 'monospace', fontSize: 12 }}>{row.dims}"</td>
                 <td style={{ padding: '9px 12px', color: 'var(--gray-600)', textAlign: 'right' }}>{row.qty}</td>
-                <td style={{ padding: '9px 12px', color: 'var(--gray-700)', fontWeight: 600, textAlign: 'right' }}>${row.price.toLocaleString()}</td>
+                <td style={{ padding: '9px 12px', color: 'var(--gray-700)', fontWeight: 600, textAlign: 'right' }}>${row.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style={{ padding: '9px 12px', color: 'var(--gray-600)' }}>{row.supplier}</td>
               </tr>
             ))}
           </tbody>
