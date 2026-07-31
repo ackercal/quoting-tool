@@ -555,7 +555,7 @@ export default function QuoteView({ projectId }: Props) {
           Small: 'Small (KR500, M900)',
           Medium: 'Medium (KR1000, M1000)',
           Large: 'Large (M2000)',
-          KR1500: 'KR1500',
+          KR1500: 'KR1500 (Testing Only)',
         }
         const rows = parts.map(p => ({
           name:           partDisplayName(p.name, p.manufacturing_method),
