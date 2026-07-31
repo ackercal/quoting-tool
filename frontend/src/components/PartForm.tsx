@@ -16,8 +16,9 @@ interface Props {
 
 const ROBOT_STRENGTHS: { value: string; label: string }[] = [
   { value: 'Small',  label: 'Small (KR500, M900)' },
-  { value: 'Medium', label: 'Medium (KR1000, KR1500, M1000)' },
+  { value: 'Medium', label: 'Medium (KR1000, M1000)' },
   { value: 'Large',  label: 'Large (M2000)' },
+  { value: 'KR1500', label: 'KR1500' },
   { value: 'Custom', label: 'Custom Cost — R&D' },
 ]
 

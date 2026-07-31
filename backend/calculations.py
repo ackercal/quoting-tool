@@ -17,6 +17,7 @@ HOURLY_RATES: dict[str, dict[int, float]] = {
     "Small":     {2026: 24.42, 2027: 24.42, 2028: 24.42},
     "Medium":    {2026: 37.57, 2027: 37.57, 2028: 37.57},
     "Large":     {2026: 55.07, 2027: 55.07, 2028: 55.07},
+    "KR1500":    {2026: 13.51, 2027: 13.51, 2028: 13.51},
 }
 
 # ── Forecast: Robot improvement factors — per operation type ──────────────────

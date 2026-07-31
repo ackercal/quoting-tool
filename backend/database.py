@@ -126,6 +126,7 @@ def _seed_constants(c):
         ("rate_Small",     24.42, "Small robot hourly rate",     "rates"),
         ("rate_Medium",    37.57, "Medium robot hourly rate",    "rates"),
         ("rate_Large",     55.07, "Large robot hourly rate",     "rates"),
+        ("rate_KR1500",    13.51, "KR1500 robot hourly rate",    "rates"),
         # Robot improvement multipliers (applied to user's current robot time estimate)
         ("robot_improvement_2026", 1.0,    "Robot time improvement factor 2026", "misc"),
         ("robot_improvement_2027", 0.65,   "Robot time improvement factor 2027", "misc"),

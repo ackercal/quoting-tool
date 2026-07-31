@@ -553,8 +553,9 @@ export default function QuoteView({ projectId }: Props) {
       {(() => {
         const ROBOT_LABELS: Record<string, string> = {
           Small: 'Small (KR500, M900)',
-          Medium: 'Medium (KR1000, KR1500, M1000)',
+          Medium: 'Medium (KR1000, M1000)',
           Large: 'Large (M2000)',
+          KR1500: 'KR1500',
         }
         const rows = parts.map(p => ({
           name:           partDisplayName(p.name, p.manufacturing_method),
