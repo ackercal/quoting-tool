@@ -679,7 +679,7 @@ export default function Home() {
                         <thead><tr><th>Role / Cell</th><th className="right">$/hr</th></tr></thead>
                         <tbody>
                           {flat.filter(c => c.key.startsWith('rate_')).map(c => {
-                            const isRobot = ['rate_Small', 'rate_Medium', 'rate_Large', 'rate_KR1500'].includes(c.key)
+                            const isRobot = ['rate_Small', 'rate_Medium', 'rate_Large'].includes(c.key)
                             return (
                               <tr key={c.key}>
                                 <td>{c.description ?? c.key}</td>
@@ -768,8 +768,8 @@ export default function Home() {
             {/* ── Kept reference sections ── */}
             {[
               {
-                heading: 'Robot Types (Small / Medium / Large / KR1500)',
-                body: `The robot cell used for forming has its own hourly cost, which varies by size — a Large robot costs significantly more per hour than a Small one. This rate is applied to the effective robot hours (after the improvement factor) for every forming, scanning, and cutting operation across all trials and the production run. Current rates: Small $24.42/hr, Medium $37.57/hr, Large $55.07/hr, KR1500 $13.51/hr.`,
+                heading: 'Robot Types (Small / Medium / Large)',
+                body: `The robot cell used for forming has its own hourly cost, which varies by size — a Large robot costs significantly more per hour than a Small one. This rate is applied to the effective robot hours (after the improvement factor) for every forming, scanning, and cutting operation across all trials and the production run. Current rates: Small (KR500, M900) $10.77/hr, Medium (KR1500, M1000) $13.51/hr, Large (M2000) $18.06/hr.`,
               },
               {
                 heading: 'Sheet Material Cost',

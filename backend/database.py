@@ -103,6 +103,9 @@ def init_db():
         "ALTER TABLE parts ADD COLUMN other_mfg_cost_dup REAL NOT NULL DEFAULT 0",
         "ALTER TABLE projects ADD COLUMN labor_constants TEXT NOT NULL DEFAULT 'formed_parts'",
         "ALTER TABLE parts ADD COLUMN custom_robot_cost_per_hr REAL",
+        # Retire the experimental KR1500 robot type: it now falls under Medium (same rate).
+        "UPDATE parts SET robot_strength='Medium' WHERE robot_strength='KR1500'",
+        "DELETE FROM constants WHERE key='rate_KR1500'",
     ]:
         try:
             c.execute(migration)
@@ -123,10 +126,9 @@ def _seed_constants(c):
         ("rate_Tech",      52.52168831168831, "Technician hourly rate",      "rates"),
         ("rate_Purchaser", 77.6948051948052,  "Purchaser hourly rate",       "rates"),
         ("rate_PM",        84.1693722943723,  "Project Manager hourly rate", "rates"),
-        ("rate_Small",     24.42, "Small robot hourly rate",     "rates"),
-        ("rate_Medium",    37.57, "Medium robot hourly rate",    "rates"),
-        ("rate_Large",     55.07, "Large robot hourly rate",     "rates"),
-        ("rate_KR1500",    13.51, "KR1500 robot hourly rate",    "rates"),
+        ("rate_Small",     10.77, "Small robot hourly rate",     "rates"),
+        ("rate_Medium",    13.51, "Medium robot hourly rate",    "rates"),
+        ("rate_Large",     18.06, "Large robot hourly rate",     "rates"),
         # Robot improvement multipliers (applied to user's current robot time estimate)
         ("robot_improvement_2026", 1.0,    "Robot time improvement factor 2026", "misc"),
         ("robot_improvement_2027", 0.65,   "Robot time improvement factor 2027", "misc"),
