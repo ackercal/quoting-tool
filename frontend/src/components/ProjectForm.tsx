@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import type { Project } from '../types'
 import NumInput from './NumInput'
 import { useUser } from '../user'
+import OwnerPicker from './OwnerPicker'
 
 interface Props {
   project: Project
@@ -144,16 +145,14 @@ export default function ProjectForm({ project, onUpdate }: Props) {
         Authorship & Visibility
         {!adminMode && <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--gray-500)', marginLeft: 8 }}>(admin mode required to edit)</span>}
       </div>
-      <div className="form-grid three" style={{ maxWidth: 900 }}>
+      <div className="form-grid" style={{ maxWidth: 640 }}>
         <div className="field">
-          <label>Author</label>
-          <input value={form.author_name ?? ''} disabled={!adminMode}
-            onChange={e => set('author_name', e.target.value)} placeholder="—" />
-        </div>
-        <div className="field">
-          <label>Author Email</label>
-          <input value={form.author_email ?? ''} disabled={!adminMode}
-            onChange={e => set('author_email', e.target.value)} placeholder="—" />
+          <label>Owner</label>
+          {adminMode ? (
+            <OwnerPicker email={form.author_email ?? ''} onChange={(em, nm) => { set('author_email', em); set('author_name', nm) }} />
+          ) : (
+            <input value={form.author_name ?? '—'} disabled />
+          )}
         </div>
         <div className="field">
           <label>Who Can See This</label>

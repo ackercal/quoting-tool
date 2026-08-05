@@ -28,6 +28,15 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.8.2',
+    date: '2026-08-05',
+    title: 'Easier owner picking & sign-in speedup',
+    changes: [
+      { type: 'changed', text: 'Setting a project’s owner is now a dropdown of people who’ve used the app — or enter any email and the name is filled in automatically.' },
+      { type: 'fixed', text: 'Fixed the app hanging on “Signing in…” — sign-in is fast again.' },
+    ],
+  },
+  {
     version: '1.8.1',
     date: '2026-08-05',
     title: 'Owner editing, tab logo & brand polish',

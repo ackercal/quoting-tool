@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import type { Project, Constant, AppUser } from '../types'
 import { RELEASES, CURRENT_VERSION, type ChangeType } from '../releaseNotes'
 import { useUser } from '../user'
+import OwnerPicker from '../components/OwnerPicker'
 
 type Section = 'projects' | 'devtools' | 'readme' | 'helpers' | 'releases' | 'admin'
 
@@ -1206,12 +1207,8 @@ function OwnerAccessModal({ project, onCancel, onSave }: {
         <div style={{ fontSize: 13, color: 'var(--gray-500)', marginTop: -6, marginBottom: 14 }}>{project.name}</div>
 
         <div className="field">
-          <label>Owner (name)</label>
-          <input autoFocus value={authorName} onChange={e => setAuthorName(e.target.value)} placeholder="e.g. Calvin Acker" />
-        </div>
-        <div className="field">
-          <label>Owner email</label>
-          <input value={authorEmail} onChange={e => setAuthorEmail(e.target.value)} placeholder="name@machinalabs.ai" />
+          <label>Owner</label>
+          <OwnerPicker email={authorEmail} onChange={(em, nm) => { setAuthorEmail(em); setAuthorName(nm) }} />
         </div>
         <div className="field">
           <label>Who can see this project</label>
