@@ -1,11 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Project, Constant } from '../types'
+import type { Project, Constant, AppUser } from '../types'
+import { RELEASES, CURRENT_VERSION, type ChangeType } from '../releaseNotes'
+import { useUser } from '../user'
 
-type Section = 'projects' | 'devtools' | 'readme' | 'helpers'
+type Section = 'projects' | 'devtools' | 'readme' | 'helpers' | 'releases' | 'admin'
 
 const YEARS = [2026, 2027, 2028]
+
+// Release-note change-type styling (pill background/text colors + label)
+const CHANGE_LABEL: Record<ChangeType, string> = {
+  added: 'Added', changed: 'Changed', fixed: 'Fixed', removed: 'Removed',
+}
+const CHANGE_PILL: Record<ChangeType, { background: string; color: string }> = {
+  added:   { background: '#e6f4ea', color: '#1e7e34' },
+  changed: { background: '#e7f0fb', color: '#1c5fb0' },
+  fixed:   { background: '#fdf2e0', color: '#a86412' },
+  removed: { background: '#fbe6e6', color: '#b02a2a' },
+}
 
 function fmtVal(v: number) {
   return v % 1 === 0 ? v.toFixed(0) : v.toFixed(4)
@@ -222,7 +235,7 @@ export default function Home() {
   const location = useLocation()
   const initialSection = (): Section => {
     const s = new URLSearchParams(location.search).get('section')
-    if (s === 'helpers' || s === 'devtools' || s === 'readme') return s
+    if (s === 'helpers' || s === 'devtools' || s === 'readme' || s === 'releases' || s === 'admin') return s
     return 'projects'
   }
   const [section, setSection]   = useState<Section>(initialSection)
@@ -243,10 +256,27 @@ export default function Home() {
   const [duplicating, setDuplicating] = useState<number | null>(null)
   const [deleting, setDeleting]     = useState<number | null>(null)
   const [filter, setFilter]         = useState<Filter>('active')
+  const { me, isAdmin, adminMode, setAdminMode, acknowledgeVersion, logout } = useUser()
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [users, setUsers] = useState<AppUser[] | null>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
+  // A new update is unseen until THIS user acknowledges the current version (per-user, server-side).
+  const hasUnseenUpdate = !!me && me.acknowledged_version !== CURRENT_VERSION
+  const acknowledgeUpdate = () => acknowledgeVersion(CURRENT_VERSION)
   const navigate = useNavigate()
 
+  // Viewing the Release Notes counts as acknowledging the current version.
   useEffect(() => {
-    const close = () => setOpenMenu(null)
+    if (section === 'releases' && hasUnseenUpdate) acknowledgeUpdate()
+  }, [section, hasUnseenUpdate])
+
+  // Admin: load the user roster when entering the admin section.
+  useEffect(() => {
+    if (section === 'admin' && isAdmin) api.listUsers().then(setUsers).catch(() => setUsers([]))
+  }, [section, isAdmin])
+
+  useEffect(() => {
+    const close = () => { setOpenMenu(null); setProfileOpen(false) }
     document.addEventListener('click', close)
     return () => document.removeEventListener('click', close)
   }, [])
@@ -342,11 +372,145 @@ export default function Home() {
             </svg>
             Read Me
           </div>
+          <div
+            className={`sidebar-item${section === 'releases' ? ' active' : ''}`}
+            onClick={() => setSection('releases')}
+          >
+            <svg className="sidebar-item-icon" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a2 2 0 012-2h8a2 2 0 012 2v12l-6-3-6 3V5z" />
+            </svg>
+            Release Notes
+            {hasUnseenUpdate && (
+              <span
+                title="New update — click to view"
+                style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent, #e8792b)', marginLeft: 6, flexShrink: 0 }}
+              />
+            )}
+            <span
+              style={{
+                marginLeft: 'auto',
+                fontSize: 11,
+                fontWeight: 600,
+                color: hasUnseenUpdate ? '#fff' : 'var(--gray-500)',
+                background: hasUnseenUpdate ? 'var(--accent, #e8792b)' : 'var(--gray-100)',
+                borderRadius: 6,
+                padding: '1px 6px',
+              }}
+            >
+              v{CURRENT_VERSION}
+            </span>
+          </div>
+          {adminMode && (
+            <div
+              className={`sidebar-item${section === 'admin' ? ' active' : ''}`}
+              onClick={() => setSection('admin')}
+            >
+              <svg className="sidebar-item-icon" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 2l6 3v5c0 4-2.7 6.5-6 8-3.3-1.5-6-4-6-8V5l6-3z" />
+              </svg>
+              Admin
+            </div>
+          )}
         </nav>
+
+        {/* ── Profile (bottom-left) ── */}
+        <div className="sidebar-profile" style={{ position: 'relative', borderTop: '1px solid var(--gray-200)', padding: 10 }}>
+          {profileOpen && me && (
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: 'absolute', bottom: 'calc(100% - 2px)', left: 10, right: 10,
+                background: 'var(--surface, #fff)', border: '1px solid var(--gray-200)',
+                borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 14, marginBottom: 6,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700 }}>{me.display_name}</div>
+              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 10, wordBreak: 'break-all' }}>{me.email}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>Permission:</span>
+                <span style={{ fontSize: 11, fontWeight: 600, background: 'var(--gray-100)', borderRadius: 5, padding: '1px 7px' }}>
+                  {me.is_admin ? 'Admin' : 'User'} · sees {me.access_scope === 'all' ? 'all quotes' : me.access_scope}
+                </span>
+              </div>
+              {isAdmin && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '12px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={adminMode} onChange={e => setAdminMode(e.target.checked)} />
+                  Admin mode
+                </label>
+              )}
+              <button
+                onClick={logout}
+                style={{
+                  width: '100%', marginTop: 6, background: 'none', border: '1px solid var(--gray-300)',
+                  borderRadius: 8, padding: '7px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--gray-700)',
+                }}
+              >
+                Log out
+              </button>
+            </div>
+          )}
+          <div
+            onClick={e => { e.stopPropagation(); setProfileOpen(o => !o) }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: 6, borderRadius: 8 }}
+          >
+            <div style={{
+              width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+              background: me?.is_admin ? 'var(--accent, #e8792b)' : 'var(--gray-400)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
+            }}>
+              {(me?.display_name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {me ? me.display_name : 'Signing in…'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>
+                {me?.is_admin ? (adminMode ? 'Admin mode' : 'Admin') : 'User'}
+              </div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--gray-400)" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 8l4 4 4-4" />
+            </svg>
+          </div>
+        </div>
       </div>
 
       {/* ── Main ── */}
       <div className="main-content">
+        {hasUnseenUpdate && !bannerDismissed && section !== 'releases' && (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              background: 'var(--accent-soft, #fbe8d8)',
+              border: '1px solid var(--accent, #e8792b)',
+              borderRadius: 10, padding: '12px 16px', margin: '0 0 20px',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--accent, #e8792b)" strokeWidth="1.6" style={{ flexShrink: 0 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 2a5 5 0 015 5v3l1.5 2.5H3.5L5 10V7a5 5 0 015-5zM8 16a2 2 0 004 0" />
+            </svg>
+            <div style={{ flex: 1, fontSize: 14, color: 'var(--gray-800, #333)' }}>
+              <strong>The quoting tool was updated to v{CURRENT_VERSION}.</strong> See what changed in this release.
+            </div>
+            <button
+              onClick={() => { acknowledgeUpdate(); setSection('releases') }}
+              style={{
+                background: 'var(--accent, #e8792b)', color: '#fff', border: 'none',
+                borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+              }}
+            >
+              View updates
+            </button>
+            <button
+              onClick={() => { setBannerDismissed(true); acknowledgeUpdate() }}
+              aria-label="Dismiss"
+              title="Dismiss"
+              style={{ background: 'none', border: 'none', color: 'var(--gray-500)', fontSize: 20, lineHeight: 1, cursor: 'pointer', padding: '0 4px', flexShrink: 0 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {section === 'projects' && (
           <div className="home-page">
             <div className="home-header">
@@ -455,6 +619,7 @@ export default function Home() {
                         ))}
                       </div>
                       <div className="project-card-meta">
+                        <span>{p.author_name ? `By ${p.author_name}` : 'By —'}</span>
                         <span>Updated {fmt(p.updated_at)}</span>
                       </div>
                     </div>
@@ -800,6 +965,69 @@ export default function Home() {
           </div>
         )}
 
+        {section === 'releases' && (
+          <div className="home-page" style={{ maxWidth: 760 }}>
+            <div className="home-header" style={{ marginBottom: 8 }}>
+              <div>
+                <div className="home-title">Release Notes</div>
+                <div className="home-subtitle">Version history and what changed in each update · currently on v{CURRENT_VERSION}</div>
+              </div>
+            </div>
+            <div style={{ borderBottom: '1px solid var(--gray-200)', margin: '8px 0 28px' }} />
+
+            {RELEASES.map((rel, i) => (
+              <div key={rel.version} style={{ display: 'flex', gap: 20, marginBottom: 32 }}>
+                {/* timeline rail */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 12 }}>
+                  <div style={{ width: 12, height: 12, borderRadius: '50%', background: i === 0 ? 'var(--accent, #e8792b)' : 'var(--gray-300)', marginTop: 4 }} />
+                  {i < RELEASES.length - 1 && <div style={{ flex: 1, width: 2, background: 'var(--gray-200)', marginTop: 4 }} />}
+                </div>
+                {/* content */}
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 16, fontWeight: 700 }}>v{rel.version}</span>
+                    {i === 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent, #e8792b)', background: 'var(--accent-soft, #fbe8d8)', borderRadius: 6, padding: '1px 7px' }}>
+                        Latest
+                      </span>
+                    )}
+                    <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>{rel.title}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--gray-400)' }}>
+                      {new Date(rel.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  </div>
+                  {rel.summary && (
+                    <p style={{ fontSize: 13.5, color: 'var(--gray-600)', lineHeight: 1.6, margin: '6px 0 10px' }}>{rel.summary}</p>
+                  )}
+                  <ul style={{ listStyle: 'none', padding: 0, margin: rel.summary ? 0 : '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {rel.changes.map((c, j) => (
+                      <li key={j} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                        <span style={{ ...CHANGE_PILL[c.type], flexShrink: 0, fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', borderRadius: 5, padding: '2px 7px', marginTop: 1, minWidth: 62, textAlign: 'center' }}>
+                          {CHANGE_LABEL[c.type]}
+                        </span>
+                        <span style={{ fontSize: 14, color: 'var(--gray-700)', lineHeight: 1.6 }}>{c.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {section === 'admin' && isAdmin && (
+          <div className="home-page" style={{ maxWidth: 900 }}>
+            <div className="home-header" style={{ marginBottom: 8 }}>
+              <div>
+                <div className="home-title">Admin · Users & Access</div>
+                <div className="home-subtitle">Everyone who has used the app, when they were last active, and which quotes they can see.</div>
+              </div>
+            </div>
+            <div style={{ borderBottom: '1px solid var(--gray-200)', margin: '8px 0 20px' }} />
+            <AdminUsersTable users={users} onChange={u => setUsers(u)} />
+          </div>
+        )}
+
         {section === 'helpers' && (
           <div className="home-page" style={{ maxWidth: 640 }}>
             <div className="home-header" style={{ marginBottom: 4 }}>
@@ -840,6 +1068,88 @@ export default function Home() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ── Admin: users & access ─────────────────────────────────────────────────────
+
+function relTime(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso.replace(' ', 'T') + 'Z')  // SQLite stores UTC 'YYYY-MM-DD HH:MM:SS'
+  const diff = (Date.now() - d.getTime()) / 1000
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function AccessEditor({ value, saving, onSave }: { value: string; saving: boolean; onSave: (v: string) => void }) {
+  const [v, setV] = useState(value)
+  useEffect(() => { setV(value) }, [value])
+  const dirty = v.trim() !== value
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <input
+        value={v}
+        onChange={e => setV(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && dirty) onSave(v) }}
+        title="'all' = every quote; or a vertical tag / comma-separated tags"
+        style={{ width: 130, fontSize: 13, padding: '3px 6px', border: '1px solid var(--gray-300)', borderRadius: 6 }}
+      />
+      {dirty && (
+        <button onClick={() => onSave(v)} disabled={saving}
+          style={{ fontSize: 12, fontWeight: 600, border: 'none', background: 'var(--accent, #e8792b)', color: '#fff', borderRadius: 6, padding: '4px 9px', cursor: 'pointer' }}>
+          {saving ? '…' : 'Save'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function AdminUsersTable({ users, onChange }: { users: AppUser[] | null; onChange: (u: AppUser[]) => void }) {
+  const [savingEmail, setSavingEmail] = useState<string | null>(null)
+  if (users === null) return <div style={{ color: 'var(--gray-500)', fontSize: 14 }}>Loading users…</div>
+  if (users.length === 0) return <div style={{ color: 'var(--gray-500)', fontSize: 14 }}>No users have accessed the app yet.</div>
+
+  async function save(email: string, scope: string) {
+    setSavingEmail(email)
+    try {
+      const updated = await api.setUserAccess(email, scope.trim() || 'all')
+      onChange(users!.map(u => (u.email === email ? updated : u)))
+    } finally {
+      setSavingEmail(null)
+    }
+  }
+
+  return (
+    <div className="quote-section">
+      <table className="quote-table">
+        <thead>
+          <tr>
+            <th>Name</th><th>Email</th><th>Role</th>
+            <th>Last active</th><th className="right">Visits</th><th>Can see</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map(u => (
+            <tr key={u.email}>
+              <td>{u.display_name || '—'}</td>
+              <td style={{ color: 'var(--gray-500)' }}>{u.email}</td>
+              <td>{u.is_admin ? 'Admin' : 'User'}</td>
+              <td>{relTime(u.last_seen)}</td>
+              <td className="right">{u.access_count}</td>
+              <td><AccessEditor value={u.access_scope} saving={savingEmail === u.email} onSave={v => save(u.email, v)} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 10, lineHeight: 1.6 }}>
+        <strong>“all”</strong> means the person can see every quote. To restrict someone later, set this to a vertical tag
+        (or comma-separated tags) that matches the access tag on the projects they should see.
+      </div>
     </div>
   )
 }

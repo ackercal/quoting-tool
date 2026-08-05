@@ -15,11 +15,33 @@ export interface Project {
   labor_constants: string;
   internal_notes: string | null;
   is_active: number;
+  author_email: string | null;
+  author_name: string | null;
+  access_tag: string;
   parts_count?: number;
   quoted_price?: number | null;
   created_at: string;
   updated_at: string;
   parts?: Part[];
+}
+
+export interface Me {
+  email: string;
+  display_name: string;
+  is_admin: boolean;
+  access_scope: string;
+  acknowledged_version: string | null;
+}
+
+export interface AppUser {
+  email: string;
+  display_name: string | null;
+  is_admin: boolean;
+  access_scope: string;
+  acknowledged_version: string | null;
+  first_seen: string;
+  last_seen: string;
+  access_count: number;
 }
 
 export interface Part {

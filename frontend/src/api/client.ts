@@ -1,4 +1,4 @@
-import type { Project, Part, QuoteResult, Constant } from '../types';
+import type { Project, Part, QuoteResult, Constant, Me, AppUser } from '../types';
 
 const BASE = '/api';
 
@@ -50,4 +50,17 @@ export const api = {
   }>('/constants/labor-sets'),
   updateConstant: (key: string, value: number) =>
     req<Constant>(`/constants/${key}`, { method: 'PUT', body: JSON.stringify({ value }) }),
+
+  // Identity & users
+  getMe: () => req<Me>('/me'),
+  acknowledgeVersion: (version: string) =>
+    req<{ ok: boolean; acknowledged_version: string }>('/me/acknowledge-version', {
+      method: 'POST', body: JSON.stringify({ version }),
+    }),
+  listUsers: () => req<AppUser[]>('/admin/users'),
+  setUserAccess: (email: string, access_scope: string) =>
+    req<AppUser>(`/admin/users/${encodeURIComponent(email)}`, {
+      method: 'PUT', body: JSON.stringify({ access_scope }),
+    }),
+  listAccessTags: () => req<string[]>('/admin/access-tags'),
 };

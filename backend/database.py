@@ -33,6 +33,10 @@ def init_db():
         osp_margin              REAL    NOT NULL DEFAULT 0.10,
         internal_notes          TEXT,
         is_active               INTEGER NOT NULL DEFAULT 1,
+        -- authorship & visibility
+        author_email            TEXT,
+        author_name             TEXT,
+        access_tag              TEXT    NOT NULL DEFAULT 'all',
         created_at              TEXT    DEFAULT (datetime('now')),
         updated_at              TEXT    DEFAULT (datetime('now'))
     );
@@ -89,6 +93,20 @@ def init_db():
         description TEXT,
         category    TEXT
     );
+
+    -- People who have accessed the app (identity comes from Entra sign-in).
+    CREATE TABLE IF NOT EXISTS users (
+        email                TEXT PRIMARY KEY,
+        display_name         TEXT,
+        is_admin             INTEGER NOT NULL DEFAULT 0,
+        -- project visibility scope: 'all' for now; later a vertical tag or CSV of tags
+        access_scope         TEXT    NOT NULL DEFAULT 'all',
+        -- last release-notes version this user acknowledged (per-user "what's new")
+        acknowledged_version TEXT,
+        first_seen           TEXT    DEFAULT (datetime('now')),
+        last_seen            TEXT    DEFAULT (datetime('now')),
+        access_count         INTEGER NOT NULL DEFAULT 0
+    );
     """)
 
     # Migrate existing DBs
@@ -106,6 +124,14 @@ def init_db():
         # Retire the experimental KR1500 robot type: it now falls under Medium (same rate).
         "UPDATE parts SET robot_strength='Medium' WHERE robot_strength='KR1500'",
         "DELETE FROM constants WHERE key='rate_KR1500'",
+        # Authorship & visibility columns (v1.8.0)
+        "ALTER TABLE projects ADD COLUMN author_email TEXT",
+        "ALTER TABLE projects ADD COLUMN author_name TEXT",
+        "ALTER TABLE projects ADD COLUMN access_tag TEXT NOT NULL DEFAULT 'all'",
+        # Backfill: existing projects default to the admin as author, visible to all.
+        f"UPDATE projects SET author_email='{ADMIN_EMAIL}' WHERE author_email IS NULL",
+        f"UPDATE projects SET author_name='{ADMIN_NAME}' WHERE author_name IS NULL",
+        "UPDATE projects SET access_tag='all' WHERE access_tag IS NULL OR access_tag=''",
     ]:
         try:
             c.execute(migration)
@@ -113,8 +139,24 @@ def init_db():
             pass
 
     _seed_constants(c)
+    _seed_admin(c)
     conn.commit()
     conn.close()
+
+
+# The designated admin. Everyone else defaults to a normal user with 'all' access.
+ADMIN_EMAIL = "calvin.acker@machinalabs.ai"
+ADMIN_NAME  = "Calvin Acker"
+
+
+def _seed_admin(c):
+    """Ensure the admin account exists and is flagged as admin (idempotent)."""
+    c.execute(
+        """INSERT INTO users (email, display_name, is_admin, access_scope)
+           VALUES (?, ?, 1, 'all')
+           ON CONFLICT(email) DO UPDATE SET is_admin=1""",
+        (ADMIN_EMAIL, ADMIN_NAME),
+    )
 
 
 def _seed_constants(c):

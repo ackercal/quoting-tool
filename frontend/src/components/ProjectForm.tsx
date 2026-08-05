@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api/client'
 import type { Project } from '../types'
 import NumInput from './NumInput'
+import { useUser } from '../user'
 
 interface Props {
   project: Project
@@ -12,6 +13,7 @@ const YEARS = [2026, 2027, 2028]
 const MATERIAL_TYPES = ['AA-6061-0', 'AA-5052-0', 'AA-7075-0', 'Ti-6Al-4V sheet', 'Other']
 
 export default function ProjectForm({ project, onUpdate }: Props) {
+  const { adminMode } = useUser()
   const [form, setForm]       = useState(project)
   const [saveStatus, setSave] = useState<'idle' | 'saving' | 'saved'>('idle')
 
@@ -135,6 +137,29 @@ export default function ProjectForm({ project, onUpdate }: Props) {
               onChange={v => set('shipping_cost', v)} />
           </div>
           <div className="field-hint">Delivering project to the customer</div>
+        </div>
+      </div>
+
+      <div className="section-heading">
+        Authorship & Visibility
+        {!adminMode && <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--gray-500)', marginLeft: 8 }}>(admin mode required to edit)</span>}
+      </div>
+      <div className="form-grid three" style={{ maxWidth: 900 }}>
+        <div className="field">
+          <label>Author</label>
+          <input value={form.author_name ?? ''} disabled={!adminMode}
+            onChange={e => set('author_name', e.target.value)} placeholder="—" />
+        </div>
+        <div className="field">
+          <label>Author Email</label>
+          <input value={form.author_email ?? ''} disabled={!adminMode}
+            onChange={e => set('author_email', e.target.value)} placeholder="—" />
+        </div>
+        <div className="field">
+          <label>Who Can See This</label>
+          <input value={form.access_tag ?? 'all'} disabled={!adminMode}
+            onChange={e => set('access_tag', e.target.value)} placeholder="all" />
+          <div className="field-hint">“all” = everyone. A vertical tag limits it to users with matching access.</div>
         </div>
       </div>
 

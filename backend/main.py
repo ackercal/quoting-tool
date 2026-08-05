@@ -1,10 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import sqlite3
+import base64
+import json
+import os
 
-from database import get_conn, init_db
+from database import get_conn, init_db, ADMIN_EMAIL, ADMIN_NAME
 from calculations import (
     calc_project_quote,
     ProjectInputs,
@@ -38,6 +41,88 @@ def startup():
     init_db()
 
 
+# ── Identity (Azure Easy Auth / Entra sign-in) ────────────────────────────────
+# In production, Azure Easy Auth injects the signed-in user via request headers.
+# Locally there is no Easy Auth, so we fall back to a dev identity (env or a
+# per-request override header) so the app is testable without sign-in.
+
+def _identity_from_request(request: Request) -> tuple[str, Optional[str]]:
+    email = request.headers.get("x-ms-client-principal-name")
+    name: Optional[str] = None
+
+    principal_b64 = request.headers.get("x-ms-client-principal")
+    if principal_b64:
+        try:
+            data = json.loads(base64.b64decode(principal_b64).decode("utf-8"))
+            claims = {c.get("typ"): c.get("val") for c in data.get("claims", [])}
+            name = (claims.get("name")
+                    or claims.get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"))
+            if not email:
+                email = (claims.get("preferred_username")
+                         or claims.get("emails")
+                         or claims.get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"))
+        except Exception:
+            pass
+
+    if not email:
+        # Local/dev fallback. A name only ever pairs with its own email source so an
+        # email override never inherits a different user's name (real Easy Auth sends both).
+        if request.headers.get("x-dev-user-email"):
+            email = request.headers.get("x-dev-user-email")
+            name = request.headers.get("x-dev-user-name")
+        elif os.environ.get("QUOTE_TOOL_DEV_USER_EMAIL"):
+            email = os.environ.get("QUOTE_TOOL_DEV_USER_EMAIL")
+            name = os.environ.get("QUOTE_TOOL_DEV_USER_NAME")
+
+    if not email:
+        return ("guest@unknown", name or "Guest")
+
+    if not name:
+        local = email.split("@")[0]
+        name = " ".join(w.capitalize() for w in local.replace(".", " ").replace("_", " ").split())
+    return (email.lower(), name)
+
+
+def current_user(request: Request) -> dict:
+    """Resolve the caller's identity, upserting the users row and bumping last_seen."""
+    email, name = _identity_from_request(request)
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+    if row is None:
+        conn.execute(
+            "INSERT INTO users (email, display_name, is_admin, access_scope, access_count) VALUES (?,?,?,?,1)",
+            (email, name, 1 if email == ADMIN_EMAIL else 0, "all"),
+        )
+    else:
+        conn.execute(
+            "UPDATE users SET last_seen=datetime('now'), access_count=access_count+1, display_name=COALESCE(?, display_name) WHERE email=?",
+            (name, email),
+        )
+    conn.commit()
+    row = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+    conn.close()
+    u = dict(row)
+    u["is_admin"] = bool(u["is_admin"])
+    return u
+
+
+def require_admin(user: dict = Depends(current_user)) -> dict:
+    if not user.get("is_admin"):
+        raise HTTPException(403, "Admin access required")
+    return user
+
+
+def _can_see(project_row, user: dict) -> bool:
+    """Whether `user` may view a project given its access_tag and their access_scope."""
+    if user.get("is_admin") or user.get("access_scope", "all") == "all":
+        return True
+    tag = (project_row["access_tag"] if "access_tag" in project_row.keys() else None) or "all"
+    if tag == "all":
+        return True
+    allowed = {t.strip() for t in (user.get("access_scope") or "").split(",") if t.strip()}
+    return tag in allowed
+
+
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
 class ProjectCreate(BaseModel):
@@ -56,10 +141,23 @@ class ProjectCreate(BaseModel):
     labor_constants: str = "formed_parts"
     internal_notes: Optional[str] = None
     is_active: int = 1
+    # authorship & visibility (author is set from identity on create;
+    # author/access_tag are editable by an admin on update)
+    author_email: Optional[str] = None
+    author_name: Optional[str] = None
+    access_tag: str = "all"
 
 
 class ProjectUpdate(ProjectCreate):
     pass
+
+
+class AccessUpdate(BaseModel):
+    access_scope: str
+
+
+class AckVersion(BaseModel):
+    version: str
 
 
 class PartCreate(BaseModel):
@@ -112,12 +210,14 @@ def row_to_dict(row) -> dict:
 # ── Projects ──────────────────────────────────────────────────────────────────
 
 @app.get("/projects")
-def list_projects():
+def list_projects(user: dict = Depends(current_user)):
     conn = get_conn()
     rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
 
     result = []
     for row in rows:
+        if not _can_see(row, user):
+            continue
         proj = row_to_dict(row)
         parts_rows = conn.execute(
             "SELECT * FROM parts WHERE project_id=? ORDER BY sort_order, id", (proj["id"],)
@@ -176,20 +276,21 @@ def list_projects():
 
 
 @app.post("/projects", status_code=201)
-def create_project(data: ProjectCreate):
+def create_project(data: ProjectCreate, user: dict = Depends(current_user)):
     conn = get_conn()
     c = conn.execute(
         """INSERT INTO projects
            (name,quantity_of_assemblies,material_type,ht_type,internal_margin,
             year_of_execution,assembly_pp_internal,assembly_pp_external,
             assembly_first_part_setup,setup_splitting_hrs,shipping_cost,osp_margin,
-            labor_constants,internal_notes,is_active)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            labor_constants,internal_notes,is_active,author_email,author_name,access_tag)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
          data.internal_margin, data.year_of_execution, data.assembly_pp_internal,
          data.assembly_pp_external, data.assembly_first_part_setup,
          data.setup_splitting_hrs, data.shipping_cost, data.osp_margin,
-         data.labor_constants, data.internal_notes, data.is_active),
+         data.labor_constants, data.internal_notes, data.is_active,
+         user["email"], user["display_name"], data.access_tag or "all"),
     )
     pid = c.lastrowid
     conn.commit()
@@ -199,11 +300,16 @@ def create_project(data: ProjectCreate):
 
 
 @app.get("/projects/{pid}")
-def get_project(pid: int):
+def get_project(pid: int, user: dict = Depends(current_user)):
     conn = get_conn()
-    project = row_to_dict(conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone())
-    if not project:
+    prow = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+    if not prow:
+        conn.close()
         raise HTTPException(404, "Project not found")
+    if not _can_see(prow, user):
+        conn.close()
+        raise HTTPException(403, "You don't have access to this project")
+    project = row_to_dict(prow)
     parts = [row_to_dict(r) for r in conn.execute(
         "SELECT * FROM parts WHERE project_id=? ORDER BY sort_order, id", (pid,)
     ).fetchall()]
@@ -213,8 +319,26 @@ def get_project(pid: int):
 
 
 @app.put("/projects/{pid}")
-def update_project(pid: int, data: ProjectUpdate):
+def update_project(pid: int, data: ProjectUpdate, user: dict = Depends(current_user)):
     conn = get_conn()
+    existing = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+    if not existing:
+        conn.close()
+        raise HTTPException(404, "Project not found")
+    if not _can_see(existing, user):
+        conn.close()
+        raise HTTPException(403, "You don't have access to this project")
+
+    # Only an admin may reassign author or change who can see a project.
+    if user.get("is_admin"):
+        author_email = data.author_email if data.author_email is not None else existing["author_email"]
+        author_name  = data.author_name  if data.author_name  is not None else existing["author_name"]
+        access_tag   = data.access_tag   if data.access_tag             else existing["access_tag"]
+    else:
+        author_email = existing["author_email"]
+        author_name  = existing["author_name"]
+        access_tag   = existing["access_tag"]
+
     conn.execute(
         """UPDATE projects SET
            name=?,quantity_of_assemblies=?,material_type=?,ht_type=?,
@@ -222,19 +346,19 @@ def update_project(pid: int, data: ProjectUpdate):
            assembly_pp_external=?,assembly_first_part_setup=?,
            setup_splitting_hrs=?,shipping_cost=?,osp_margin=?,
            labor_constants=?,internal_notes=?,is_active=?,
+           author_email=?,author_name=?,access_tag=?,
            updated_at=datetime('now')
            WHERE id=?""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
          data.internal_margin, data.year_of_execution, data.assembly_pp_internal,
          data.assembly_pp_external, data.assembly_first_part_setup,
          data.setup_splitting_hrs, data.shipping_cost, data.osp_margin,
-         data.labor_constants, data.internal_notes, data.is_active, pid),
+         data.labor_constants, data.internal_notes, data.is_active,
+         author_email, author_name, access_tag, pid),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
     conn.close()
-    if not row:
-        raise HTTPException(404, "Project not found")
     return row_to_dict(row)
 
 
@@ -247,7 +371,7 @@ def delete_project(pid: int):
 
 
 @app.post("/projects/{pid}/duplicate", status_code=201)
-def duplicate_project(pid: int):
+def duplicate_project(pid: int, user: dict = Depends(current_user)):
     conn = get_conn()
     src = row_to_dict(conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone())
     if not src:
@@ -261,14 +385,15 @@ def duplicate_project(pid: int):
            (name,quantity_of_assemblies,material_type,ht_type,internal_margin,
             year_of_execution,assembly_pp_internal,assembly_pp_external,
             assembly_first_part_setup,setup_splitting_hrs,shipping_cost,osp_margin,
-            labor_constants,internal_notes,is_active)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            labor_constants,internal_notes,is_active,author_email,author_name,access_tag)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (f"Copy of {src['name']}", src['quantity_of_assemblies'], src['material_type'],
          src['ht_type'], src['internal_margin'], src['year_of_execution'],
          src['assembly_pp_internal'], src['assembly_pp_external'],
          src['assembly_first_part_setup'], src['setup_splitting_hrs'],
          src['shipping_cost'], src['osp_margin'], src['labor_constants'],
-         src['internal_notes'], src['is_active']),
+         src['internal_notes'], src['is_active'],
+         user["email"], user["display_name"], src.get('access_tag', 'all') or 'all'),
     )
     new_pid = c.lastrowid
 
@@ -511,3 +636,67 @@ def update_constant(key: str, data: ConstantUpdate):
     if not row:
         raise HTTPException(404, "Constant not found")
     return row_to_dict(row)
+
+
+# ── Identity & users ──────────────────────────────────────────────────────────
+
+@app.get("/me")
+def get_me(user: dict = Depends(current_user)):
+    """Current signed-in user: identity, permission level, and last acknowledged version."""
+    return {
+        "email":                user["email"],
+        "display_name":         user["display_name"],
+        "is_admin":             user["is_admin"],
+        "access_scope":         user["access_scope"],
+        "acknowledged_version": user["acknowledged_version"],
+    }
+
+
+@app.post("/me/acknowledge-version")
+def acknowledge_version(data: AckVersion, user: dict = Depends(current_user)):
+    """Record that this user has seen a given release-notes version."""
+    conn = get_conn()
+    conn.execute("UPDATE users SET acknowledged_version=? WHERE email=?", (data.version, user["email"]))
+    conn.commit()
+    conn.close()
+    return {"ok": True, "acknowledged_version": data.version}
+
+
+@app.get("/admin/users")
+def list_users(user: dict = Depends(require_admin)):
+    """Admin: everyone who has accessed the app, when they were last seen, and their access scope."""
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM users ORDER BY last_seen DESC").fetchall()
+    conn.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["is_admin"] = bool(d["is_admin"])
+        out.append(d)
+    return out
+
+
+@app.put("/admin/users/{email}")
+def update_user_access(email: str, data: AccessUpdate, user: dict = Depends(require_admin)):
+    """Admin: set which projects a user can see ('all' or a comma-separated list of tags)."""
+    conn = get_conn()
+    row = conn.execute("SELECT email FROM users WHERE email=?", (email.lower(),)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "User not found")
+    conn.execute("UPDATE users SET access_scope=? WHERE email=?", (data.access_scope, email.lower()))
+    conn.commit()
+    updated = conn.execute("SELECT * FROM users WHERE email=?", (email.lower(),)).fetchone()
+    conn.close()
+    d = dict(updated)
+    d["is_admin"] = bool(d["is_admin"])
+    return d
+
+
+@app.get("/admin/access-tags")
+def list_access_tags(user: dict = Depends(require_admin)):
+    """Admin: distinct access tags currently in use across projects (for building visibility menus)."""
+    conn = get_conn()
+    rows = conn.execute("SELECT DISTINCT access_tag FROM projects WHERE access_tag IS NOT NULL").fetchall()
+    conn.close()
+    return sorted({(r["access_tag"] or "all") for r in rows} | {"all"})
