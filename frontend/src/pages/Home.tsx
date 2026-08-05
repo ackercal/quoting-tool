@@ -255,6 +255,7 @@ export default function Home() {
   const [openMenu, setOpenMenu]     = useState<number | null>(null)
   const [duplicating, setDuplicating] = useState<number | null>(null)
   const [deleting, setDeleting]     = useState<number | null>(null)
+  const [ownerEdit, setOwnerEdit]   = useState<Project | null>(null)
   const [filter, setFilter]         = useState<Filter>('active')
   const { me, isAdmin, adminMode, setAdminMode, acknowledgeVersion, logout } = useUser()
   const [profileOpen, setProfileOpen] = useState(false)
@@ -322,6 +323,13 @@ export default function Home() {
     }
   }
 
+  async function saveOwnerEdit(fields: { author_name: string; author_email: string; access_tag: string }) {
+    if (!ownerEdit) return
+    const updated = await api.updateProject(ownerEdit.id, { ...ownerEdit, ...fields })
+    setProjects(prev => prev.map(p => (p.id === updated.id ? { ...p, ...updated } : p)))
+    setOwnerEdit(null)
+  }
+
   function fmt(d: string) {
     return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
@@ -383,7 +391,7 @@ export default function Home() {
             {hasUnseenUpdate && (
               <span
                 title="New update — click to view"
-                style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent, #e8792b)', marginLeft: 6, flexShrink: 0 }}
+                style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--orange, #FF9900)', marginLeft: 6, flexShrink: 0 }}
               />
             )}
             <span
@@ -392,7 +400,7 @@ export default function Home() {
                 fontSize: 11,
                 fontWeight: 600,
                 color: hasUnseenUpdate ? '#fff' : 'var(--gray-500)',
-                background: hasUnseenUpdate ? 'var(--accent, #e8792b)' : 'var(--gray-100)',
+                background: hasUnseenUpdate ? 'var(--orange, #FF9900)' : 'var(--gray-100)',
                 borderRadius: 6,
                 padding: '1px 6px',
               }}
@@ -455,7 +463,7 @@ export default function Home() {
           >
             <div style={{
               width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-              background: me?.is_admin ? 'var(--accent, #e8792b)' : 'var(--gray-400)', color: '#fff',
+              background: me?.is_admin ? 'var(--orange, #FF9900)' : 'var(--gray-400)', color: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
             }}>
               {(me?.display_name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
@@ -481,12 +489,12 @@ export default function Home() {
           <div
             style={{
               display: 'flex', alignItems: 'center', gap: 12,
-              background: 'var(--accent-soft, #fbe8d8)',
-              border: '1px solid var(--accent, #e8792b)',
+              background: 'var(--orange-soft, #fff3e0)',
+              border: '1px solid var(--orange, #FF9900)',
               borderRadius: 10, padding: '12px 16px', margin: '0 0 20px',
             }}
           >
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--accent, #e8792b)" strokeWidth="1.6" style={{ flexShrink: 0 }}>
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--orange, #FF9900)" strokeWidth="1.6" style={{ flexShrink: 0 }}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 2a5 5 0 015 5v3l1.5 2.5H3.5L5 10V7a5 5 0 015-5zM8 16a2 2 0 004 0" />
             </svg>
             <div style={{ flex: 1, fontSize: 14, color: 'var(--gray-800, #333)' }}>
@@ -495,7 +503,7 @@ export default function Home() {
             <button
               onClick={() => { acknowledgeUpdate(); setSection('releases') }}
               style={{
-                background: 'var(--accent, #e8792b)', color: '#fff', border: 'none',
+                background: 'var(--orange, #FF9900)', color: '#fff', border: 'none',
                 borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
               }}
             >
@@ -580,8 +588,22 @@ export default function Home() {
                             {openMenu === p.id && (
                               <div
                                 onClick={e => e.stopPropagation()}
-                                style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.10)', zIndex: 100, minWidth: 140, overflow: 'hidden' }}
+                                style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.10)', zIndex: 100, minWidth: 160, overflow: 'hidden' }}
                               >
+                                {isAdmin && (
+                                  <>
+                                    <button
+                                      onClick={e => { e.stopPropagation(); setOpenMenu(null); setOwnerEdit(p) }}
+                                      style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: 8 }}
+                                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--gray-100)')}
+                                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                    >
+                                      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5"/></svg>
+                                      Owner & access
+                                    </button>
+                                    <div style={{ height: 1, background: 'var(--gray-200)' }} />
+                                  </>
+                                )}
                                 <button
                                   onClick={e => handleDuplicate(e, p.id)}
                                   style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: 8 }}
@@ -979,7 +1001,7 @@ export default function Home() {
               <div key={rel.version} style={{ display: 'flex', gap: 20, marginBottom: 32 }}>
                 {/* timeline rail */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 12 }}>
-                  <div style={{ width: 12, height: 12, borderRadius: '50%', background: i === 0 ? 'var(--accent, #e8792b)' : 'var(--gray-300)', marginTop: 4 }} />
+                  <div style={{ width: 12, height: 12, borderRadius: '50%', background: i === 0 ? 'var(--orange, #FF9900)' : 'var(--gray-300)', marginTop: 4 }} />
                   {i < RELEASES.length - 1 && <div style={{ flex: 1, width: 2, background: 'var(--gray-200)', marginTop: 4 }} />}
                 </div>
                 {/* content */}
@@ -987,7 +1009,7 @@ export default function Home() {
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 16, fontWeight: 700 }}>v{rel.version}</span>
                     {i === 0 && (
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent, #e8792b)', background: 'var(--accent-soft, #fbe8d8)', borderRadius: 6, padding: '1px 7px' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--orange, #FF9900)', background: 'var(--orange-soft, #fff3e0)', borderRadius: 6, padding: '1px 7px' }}>
                         Latest
                       </span>
                     )}
@@ -1068,6 +1090,10 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {ownerEdit && (
+        <OwnerAccessModal project={ownerEdit} onCancel={() => setOwnerEdit(null)} onSave={saveOwnerEdit} />
+      )}
     </div>
   )
 }
@@ -1101,7 +1127,7 @@ function AccessEditor({ value, saving, onSave }: { value: string; saving: boolea
       />
       {dirty && (
         <button onClick={() => onSave(v)} disabled={saving}
-          style={{ fontSize: 12, fontWeight: 600, border: 'none', background: 'var(--accent, #e8792b)', color: '#fff', borderRadius: 6, padding: '4px 9px', cursor: 'pointer' }}>
+          style={{ fontSize: 12, fontWeight: 600, border: 'none', background: 'var(--orange, #FF9900)', color: '#fff', borderRadius: 6, padding: '4px 9px', cursor: 'pointer' }}>
           {saving ? '…' : 'Save'}
         </button>
       )}
@@ -1149,6 +1175,58 @@ function AdminUsersTable({ users, onChange }: { users: AppUser[] | null; onChang
       <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 10, lineHeight: 1.6 }}>
         <strong>“all”</strong> means the person can see every quote. To restrict someone later, set this to a vertical tag
         (or comma-separated tags) that matches the access tag on the projects they should see.
+      </div>
+    </div>
+  )
+}
+
+function OwnerAccessModal({ project, onCancel, onSave }: {
+  project: Project
+  onCancel: () => void
+  onSave: (f: { author_name: string; author_email: string; access_tag: string }) => Promise<void>
+}) {
+  const [authorName, setAuthorName]   = useState(project.author_name ?? '')
+  const [authorEmail, setAuthorEmail] = useState(project.author_email ?? '')
+  const [accessTag, setAccessTag]     = useState(project.access_tag ?? 'all')
+  const [saving, setSaving]           = useState(false)
+
+  async function submit() {
+    setSaving(true)
+    try {
+      await onSave({ author_name: authorName.trim(), author_email: authorEmail.trim(), access_tag: accessTag.trim() || 'all' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <div className="modal-title">Owner &amp; Access</div>
+        <div style={{ fontSize: 13, color: 'var(--gray-500)', marginTop: -6, marginBottom: 14 }}>{project.name}</div>
+
+        <div className="field">
+          <label>Owner (name)</label>
+          <input autoFocus value={authorName} onChange={e => setAuthorName(e.target.value)} placeholder="e.g. Calvin Acker" />
+        </div>
+        <div className="field">
+          <label>Owner email</label>
+          <input value={authorEmail} onChange={e => setAuthorEmail(e.target.value)} placeholder="name@machinalabs.ai" />
+        </div>
+        <div className="field">
+          <label>Who can see this project</label>
+          <input value={accessTag} onChange={e => setAccessTag(e.target.value)} placeholder="all" />
+          <div className="field-hint">
+            “all” = visible to everyone. A vertical tag (e.g. <em>automotive</em>) limits it to users whose access includes that tag.
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onCancel}>Cancel</button>
+          <button className="btn-primary" onClick={submit} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
     </div>
   )

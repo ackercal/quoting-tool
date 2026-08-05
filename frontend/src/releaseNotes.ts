@@ -28,6 +28,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.8.1',
+    date: '2026-08-05',
+    title: 'Owner editing, tab logo & brand polish',
+    changes: [
+      { type: 'added', text: 'Set a project’s owner and “who can see it” right from the project card’s ⋮ menu (admins).' },
+      { type: 'added', text: 'The Machina logo now appears as the browser-tab icon.' },
+      { type: 'fixed', text: 'Aligned the new Release Notes / profile / admin accents to the Machina brand orange.' },
+    ],
+  },
+  {
     version: '1.8.0',
     date: '2026-08-05',
     title: 'User accounts, authorship & admin',
