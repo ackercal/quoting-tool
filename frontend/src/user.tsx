@@ -26,7 +26,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
-    api.getMe().then(setMe).catch(() => setMe(null)).finally(() => setLoading(false))
+    let cancelled = false
+    const load = (attempt = 0) => {
+      api.getMe()
+        .then(m => { if (!cancelled) { setMe(m); setLoading(false) } })
+        .catch(() => {
+          if (cancelled) return
+          if (attempt < 3) setTimeout(() => load(attempt + 1), 1500)  // transient slowness/cold start
+          else setLoading(false)
+        })
+    }
+    load()
+    return () => { cancelled = true }
   }, [])
 
   const isAdmin = !!me?.is_admin

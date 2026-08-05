@@ -6,9 +6,14 @@ DB_PATH = Path(os.environ.get("DB_PATH", str(Path(__file__).parent / "quote_tool
 
 
 def get_conn():
-    conn = sqlite3.connect(str(DB_PATH))
+    # timeout bounds how long a write waits on a lock before giving up (the DB lives on
+    # an Azure Files share, where locks under container overlap can stall). synchronous=NORMAL
+    # trims fsync overhead on that share.
+    conn = sqlite3.connect(str(DB_PATH), timeout=8.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 8000")
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 

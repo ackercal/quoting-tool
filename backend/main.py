@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -84,26 +84,48 @@ def _identity_from_request(request: Request) -> tuple[str, Optional[str]]:
 
 
 def current_user(request: Request) -> dict:
-    """Resolve the caller's identity, upserting the users row and bumping last_seen."""
+    """Resolve the caller's identity — READ-ONLY, so it never blocks on a DB write.
+    Recording the visit (insert new user / bump last_seen) happens off the request
+    path via record_visit() in a background task."""
     email, name = _identity_from_request(request)
     conn = get_conn()
-    row = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-    if row is None:
-        conn.execute(
-            "INSERT INTO users (email, display_name, is_admin, access_scope, access_count) VALUES (?,?,?,?,1)",
-            (email, name, 1 if email == ADMIN_EMAIL else 0, "all"),
-        )
-    else:
-        conn.execute(
-            "UPDATE users SET last_seen=datetime('now'), access_count=access_count+1, display_name=COALESCE(?, display_name) WHERE email=?",
-            (name, email),
-        )
-    conn.commit()
-    row = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-    conn.close()
-    u = dict(row)
-    u["is_admin"] = bool(u["is_admin"])
-    return u
+    try:
+        row = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+    finally:
+        conn.close()
+    if row is not None:
+        u = dict(row)
+        u["is_admin"] = bool(u["is_admin"])
+        u["_name"] = name
+        return u
+    # Not yet recorded — return a default identity; record_visit() will create the row.
+    return {
+        "email": email, "display_name": name,
+        "is_admin": email == ADMIN_EMAIL, "access_scope": "all",
+        "acknowledged_version": None, "_name": name,
+    }
+
+
+def record_visit(email: str, name: str) -> None:
+    """Best-effort: create the user on first visit, else bump last_seen. Runs in a
+    background task so slow/locked Azure Files writes never delay the response."""
+    try:
+        conn = get_conn()
+        try:
+            conn.execute(
+                """INSERT INTO users (email, display_name, is_admin, access_scope, access_count, last_seen)
+                   VALUES (?,?,?,?,1,datetime('now'))
+                   ON CONFLICT(email) DO UPDATE SET
+                     last_seen=datetime('now'),
+                     access_count=access_count+1,
+                     display_name=COALESCE(excluded.display_name, users.display_name)""",
+                (email, name, 1 if email == ADMIN_EMAIL else 0, "all"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[record_visit] skipped for {email}: {e}")
 
 
 def require_admin(user: dict = Depends(current_user)) -> dict:
@@ -641,8 +663,10 @@ def update_constant(key: str, data: ConstantUpdate):
 # ── Identity & users ──────────────────────────────────────────────────────────
 
 @app.get("/me")
-def get_me(user: dict = Depends(current_user)):
-    """Current signed-in user: identity, permission level, and last acknowledged version."""
+def get_me(background: BackgroundTasks, user: dict = Depends(current_user)):
+    """Current signed-in user: identity, permission level, and last acknowledged version.
+    Returns immediately; the visit is recorded after the response is sent."""
+    background.add_task(record_visit, user["email"], user.get("_name") or user["display_name"])
     return {
         "email":                user["email"],
         "display_name":         user["display_name"],
@@ -656,7 +680,13 @@ def get_me(user: dict = Depends(current_user)):
 def acknowledge_version(data: AckVersion, user: dict = Depends(current_user)):
     """Record that this user has seen a given release-notes version."""
     conn = get_conn()
-    conn.execute("UPDATE users SET acknowledged_version=? WHERE email=?", (data.version, user["email"]))
+    conn.execute(
+        """INSERT INTO users (email, display_name, is_admin, access_scope, acknowledged_version, access_count)
+           VALUES (?,?,?,?,?,0)
+           ON CONFLICT(email) DO UPDATE SET acknowledged_version=excluded.acknowledged_version""",
+        (user["email"], user.get("_name") or user["display_name"],
+         1 if user["is_admin"] else 0, user.get("access_scope", "all"), data.version),
+    )
     conn.commit()
     conn.close()
     return {"ok": True, "acknowledged_version": data.version}
