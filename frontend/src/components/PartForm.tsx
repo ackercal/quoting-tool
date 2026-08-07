@@ -4,7 +4,7 @@ import type { Part } from '../types'
 import NumInput from './NumInput'
 import { MANUFACTURING_METHODS, partDisplayName } from '../utils/manufacturing'
 
-const ROBOT_IMPROVEMENT: Record<number, number> = { 2026: 1.0, 2027: 0.65, 2028: 0.4225 }
+const ROBOT_IMPROVEMENT: Record<number, number> = { 2026: 1.0, 2028: 0.65, 2030: 0.4225 }
 
 interface Props {
   part: Part

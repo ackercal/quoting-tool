@@ -8,7 +8,7 @@ import OwnerPicker from '../components/OwnerPicker'
 
 type Section = 'projects' | 'devtools' | 'readme' | 'helpers' | 'releases' | 'admin'
 
-const YEARS = [2026, 2027, 2028]
+const YEARS = [2026, 2028, 2030]
 
 // Release-note change-type styling (pill background/text colors + label)
 const CHANGE_LABEL: Record<ChangeType, string> = {
@@ -28,7 +28,7 @@ function fmtVal(v: number) {
 // Split "pre_if_RPE_2026" → { base: "pre_if_RPE", year: 2026 }
 // or "rate_RPE"           → { base: "rate_RPE",   year: null }
 function parseKey(key: string): { base: string; year: number | null } {
-  const m = key.match(/^(.+)_(2026|2027|2028)$/)
+  const m = key.match(/^(.+)_(\d{4})$/)
   return m ? { base: m[1], year: parseInt(m[2]) } : { base: key, year: null }
 }
 
@@ -733,11 +733,7 @@ export default function Home() {
                     const getPhYear = (key: string, yr: number): number => {
                       const v = ph[key]
                       if (v && typeof v === 'object') return (v as Record<string, number>)[String(yr)] ?? 0
-                      return 0
-                    }
-                    const getPhFixed = (key: string): number => {
-                      const v = ph[key]
-                      return typeof v === 'number' ? v : 0
+                      return typeof v === 'number' ? v : 0  // flat scalar → same value every year
                     }
 
                     return (
@@ -803,7 +799,7 @@ export default function Home() {
                                 <tr key={row.key}>
                                   <td>{row.label} <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>— {row.scope}</span></td>
                                   <td style={{ color: 'var(--gray-400)', fontSize: 12 }}>{row.role}</td>
-                                  {YEARS.map(y => <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(getPhFixed(row.key))}</td>)}
+                                  {YEARS.map(y => <td key={y} className="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmtVal(getPhYear(row.key, y))}</td>)}
                                 </tr>
                               ))}
                             </tbody>
@@ -957,7 +953,7 @@ export default function Home() {
             {[
               {
                 heading: 'Robot Types (Small / Medium / Large)',
-                body: `The robot cell used for forming has its own hourly cost, which varies by size — a Large robot costs significantly more per hour than a Small one. This rate is applied to the effective robot hours (after the improvement factor) for every forming, scanning, and cutting operation across all trials and the production run. Current rates: Small (KR500, M900) $10.77/hr, Medium (KR1500, M1000) $13.51/hr, Large (M2000) $18.06/hr.`,
+                body: `The robot cell used for forming has its own hourly cost, which varies by size — a Large robot costs significantly more per hour than a Small one. This rate is applied to the effective robot hours (after the improvement factor) for every forming, scanning, and cutting operation across all trials and the production run. Current rates: Small (KR500, M900) $10.95/hr, Medium (KR1500, M1000) $13.69/hr, Large (M2000) $18.24/hr.`,
               },
               {
                 heading: 'Sheet Material Cost',

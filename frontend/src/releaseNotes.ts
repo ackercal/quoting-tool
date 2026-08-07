@@ -28,6 +28,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.8.3',
+    date: '2026-08-07',
+    title: 'Rate update & projection years',
+    changes: [
+      { type: 'changed', text: 'Updated robot hourly rates: Small $10.95, Medium $13.69, Large $18.24.' },
+      { type: 'changed', text: 'Projection years are now 2026 / 2028 / 2030 (was 2026 / 2027 / 2028) — the same assumptions, spread further out. Existing projects were remapped automatically (2027→2028, 2028→2030); quote numbers are unchanged.' },
+      { type: 'changed', text: 'Updated Formed Parts labor assumptions: 0.5 Tech hrs retained at the 2030 tier across all operations; Unistrut 2030 → 0.5 hrs; Purchaser/PM setup now taper by year (2 / 1 / 0.5).' },
+      { type: 'changed', text: 'Updated Custom Auto labor assumptions: 0.5 Tech hrs at the 2030 tier (0.25 for duplicate scanning); Unistrut now tapers 6 / 2 / 0.5; Purchaser/PM setup taper 2 / 1 / 0.5.' },
+    ],
+  },
+  {
     version: '1.8.2',
     date: '2026-08-05',
     title: 'Easier owner picking & sign-in speedup',

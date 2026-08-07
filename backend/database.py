@@ -143,6 +143,14 @@ def init_db():
         except Exception:
             pass
 
+    # One-time: spread projection years for existing projects (2027->2028, 2028->2030).
+    # Guarded by user_version so it runs exactly once (order matters to avoid double-shift).
+    schema_version = c.execute("PRAGMA user_version").fetchone()[0]
+    if schema_version < 1:
+        c.execute("UPDATE projects SET year_of_execution=2030 WHERE year_of_execution=2028")
+        c.execute("UPDATE projects SET year_of_execution=2028 WHERE year_of_execution=2027")
+        c.execute("PRAGMA user_version = 1")
+
     _seed_constants(c)
     _seed_admin(c)
     conn.commit()
@@ -173,9 +181,9 @@ def _seed_constants(c):
         ("rate_Tech",      52.52168831168831, "Technician hourly rate",      "rates"),
         ("rate_Purchaser", 77.6948051948052,  "Purchaser hourly rate",       "rates"),
         ("rate_PM",        84.1693722943723,  "Project Manager hourly rate", "rates"),
-        ("rate_Small",     10.77, "Small robot hourly rate",     "rates"),
-        ("rate_Medium",    13.51, "Medium robot hourly rate",    "rates"),
-        ("rate_Large",     18.06, "Large robot hourly rate",     "rates"),
+        ("rate_Small",     10.95, "Small robot hourly rate",     "rates"),
+        ("rate_Medium",    13.69, "Medium robot hourly rate",    "rates"),
+        ("rate_Large",     18.24, "Large robot hourly rate",     "rates"),
         # Robot improvement multipliers (applied to user's current robot time estimate)
         ("robot_improvement_2026", 1.0,    "Robot time improvement factor 2026", "misc"),
         ("robot_improvement_2027", 0.65,   "Robot time improvement factor 2027", "misc"),

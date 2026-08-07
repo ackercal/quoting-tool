@@ -600,7 +600,7 @@ def get_quote(pid: int):
 
     # Year-over-year comparison using the same inputs but varying the year
     year_prices = {}
-    for yr in [2026, 2027, 2028]:
+    for yr in [2026, 2028, 2030]:
         yr_inputs = ProjectInputs(
             quantity_of_assemblies=p["quantity_of_assemblies"],
             internal_margin=p["internal_margin"],

@@ -92,7 +92,7 @@ function CostBarChart({ parts, details }: { parts: Part[]; details: PartCostDeta
   )
 }
 
-const YEARS = [2026, 2027, 2028]
+const YEARS = [2026, 2028, 2030]
 
 function YearPriceChart({ yearPrices, currentYear }: { yearPrices: Record<number, YearPrice>; currentYear: number }) {
   const ml = 52, mr = 20, mt = 28, mb = 56

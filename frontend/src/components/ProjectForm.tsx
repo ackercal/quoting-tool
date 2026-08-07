@@ -10,7 +10,7 @@ interface Props {
   onUpdate: (p: Project) => void
 }
 
-const YEARS = [2026, 2027, 2028]
+const YEARS = [2026, 2028, 2030]
 const MATERIAL_TYPES = ['AA-6061-0', 'AA-5052-0', 'AA-7075-0', 'Ti-6Al-4V sheet', 'Other']
 
 export default function ProjectForm({ project, onUpdate }: Props) {

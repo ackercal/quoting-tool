@@ -9,23 +9,23 @@ from typing import Optional
 
 # ── Forecast: Hourly rates (same across years for now) ────────────────────────
 HOURLY_RATES: dict[str, dict[int, float]] = {
-    "RPE":       {2026: 90.64393939393939, 2027: 90.64393939393939, 2028: 90.64393939393939},
-    "ME":        {2026: 90.64393939393939, 2027: 90.64393939393939, 2028: 90.64393939393939},
-    "Tech":      {2026: 52.52168831168831, 2027: 52.52168831168831, 2028: 52.52168831168831},
-    "Purchaser": {2026: 77.6948051948052,  2027: 77.6948051948052,  2028: 77.6948051948052},
-    "PM":        {2026: 84.1693722943723,  2027: 84.1693722943723,  2028: 84.1693722943723},
-    "Small":     {2026: 10.77, 2027: 10.77, 2028: 10.77},
-    "Medium":    {2026: 13.51, 2027: 13.51, 2028: 13.51},
-    "Large":     {2026: 18.06, 2027: 18.06, 2028: 18.06},
+    "RPE":       {2026: 90.64393939393939, 2028: 90.64393939393939, 2030: 90.64393939393939},
+    "ME":        {2026: 90.64393939393939, 2028: 90.64393939393939, 2030: 90.64393939393939},
+    "Tech":      {2026: 52.52168831168831, 2028: 52.52168831168831, 2030: 52.52168831168831},
+    "Purchaser": {2026: 77.6948051948052,  2028: 77.6948051948052,  2030: 77.6948051948052},
+    "PM":        {2026: 84.1693722943723,  2028: 84.1693722943723,  2030: 84.1693722943723},
+    "Small":     {2026: 10.95, 2028: 10.95, 2030: 10.95},
+    "Medium":    {2026: 13.69, 2028: 13.69, 2030: 13.69},
+    "Large":     {2026: 18.24, 2028: 18.24, 2030: 18.24},
 }
 
 # ── Forecast: Robot improvement factors — per operation type ──────────────────
 # Applied to the user's current robot time estimate.
 # User enters 2026-baseline hours; future years multiply by this factor.
 ROBOT_IMPROVEMENT: dict[str, dict[int, float]] = {
-    "forming":  {2026: 1.0, 2027: 0.65,   2028: 0.4225},
-    "scanning": {2026: 1.0, 2027: 0.75,   2028: 0.5},
-    "cutting":  {2026: 1.0, 2027: 0.65,   2028: 0.4225},
+    "forming":  {2026: 1.0, 2028: 0.65,   2030: 0.4225},
+    "scanning": {2026: 1.0, 2028: 0.75,   2030: 0.5},
+    "cutting":  {2026: 1.0, 2028: 0.65,   2030: 0.4225},
 }
 
 # Maps each operation key → robot improvement category
@@ -42,46 +42,46 @@ OP_ROBOT_CATEGORY: dict[str, str] = {
 # ── Forecast: Trial reduction — multiplied against est procedures, rounded up ─
 TRIAL_REDUCTION: dict[int, float] = {
     2026: 1.0,
-    2027: 0.75,
-    2028: 0.5,
+    2028: 0.75,
+    2030: 0.5,
 }
 
 # ── Forecast: Labor hours per operation — Formed Parts ────────────────────────
 LABOR_HOURS_FORMED_PARTS: dict[str, dict[int, dict[str, float]]] = {
     "pre_if_forming": {
         2026: {"RPE": 2.0,  "ME": 1.0,  "Tech": 1.5},
-        2027: {"RPE": 1.0,  "ME": 0.5,  "Tech": 1.0},
-        2028: {"RPE": 0.5,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 1.0,  "ME": 0.5,  "Tech": 1.0},
+        2030: {"RPE": 0.5,  "ME": 0.0,  "Tech": 0.5},
     },
     "if_forming": {
         2026: {"RPE": 0.75, "ME": 0.5,  "Tech": 1.5},
-        2027: {"RPE": 0.25, "ME": 0.0,  "Tech": 1.0},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 0.25, "ME": 0.0,  "Tech": 1.0},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
     "dup_forming": {
         2026: {"RPE": 0.0,  "ME": 0.5,  "Tech": 1.5},
-        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 1.0},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 1.0},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
     "first_scan": {
         2026: {"RPE": 0.75, "ME": 1.0,  "Tech": 1.0},
-        2027: {"RPE": 0.75, "ME": 0.0,  "Tech": 0.5},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 0.75, "ME": 0.0,  "Tech": 0.5},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
     "dup_scan": {
         2026: {"RPE": 0.0,  "ME": 0.0,  "Tech": 1.0},
-        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
     "first_cut": {
         2026: {"RPE": 3.0,  "ME": 2.5,  "Tech": 0.5},
-        2027: {"RPE": 1.5,  "ME": 0.0,  "Tech": 0.5},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 1.5,  "ME": 0.0,  "Tech": 0.5},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
     "dup_cut": {
         2026: {"RPE": 0.5,  "ME": 2.0,  "Tech": 0.5},
-        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
 }
 
@@ -89,38 +89,38 @@ LABOR_HOURS_FORMED_PARTS: dict[str, dict[int, dict[str, float]]] = {
 LABOR_HOURS_CUSTOM_AUTO: dict[str, dict[int, dict[str, float]]] = {
     "pre_if_forming": {
         2026: {"RPE": 2.5,  "ME": 0.5,  "Tech": 0.75},
-        2027: {"RPE": 1.25, "ME": 0.5,  "Tech": 0.5},
-        2028: {"RPE": 0.75, "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 1.25, "ME": 0.5,  "Tech": 0.5},
+        2030: {"RPE": 0.75, "ME": 0.0,  "Tech": 0.5},
     },
     "if_forming": {
         2026: {"RPE": 1.0,  "ME": 0.5,  "Tech": 0.75},
-        2027: {"RPE": 0.25, "ME": 0.0,  "Tech": 0.5},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 0.25, "ME": 0.0,  "Tech": 0.5},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
     "dup_forming": {
         2026: {"RPE": 0.0,  "ME": 0.25, "Tech": 0.75},
-        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
     "first_scan": {
         2026: {"RPE": 0.0,  "ME": 0.25, "Tech": 0.5},
-        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
         2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
     "dup_scan": {
         2026: {"RPE": 0.0,  "ME": 0.25, "Tech": 0.5},
-        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.25},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.25},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.25},
     },
     "first_cut": {
         2026: {"RPE": 2.0,  "ME": 2.0,  "Tech": 0.5},
-        2027: {"RPE": 1.0,  "ME": 0.0,  "Tech": 0.5},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 1.0,  "ME": 0.0,  "Tech": 0.5},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
     "dup_cut": {
         2026: {"RPE": 0.5,  "ME": 2.0,  "Tech": 0.5},
-        2027: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
-        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.0},
+        2028: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
+        2030: {"RPE": 0.0,  "ME": 0.0,  "Tech": 0.5},
     },
 }
 
@@ -131,18 +131,18 @@ LABOR_HOURS_SETS: dict[str, dict] = {
 
 # ── Part-level hours per set ──────────────────────────────────────────────────
 PART_HOURS_FORMED_PARTS: dict[str, object] = {
-    "palletize_tech":     {2026: 0.5,  2027: 0.5,  2028: 0.5},
-    "unistrut_tech":      {2026: 6.0,  2027: 2.0,  2028: 1.0},
-    "purchaser_setup":    2.0,
-    "pm_setup":           2.0,
+    "palletize_tech":     {2026: 0.5,  2028: 0.5,  2030: 0.5},
+    "unistrut_tech":      {2026: 6.0,  2028: 2.0,  2030: 0.5},
+    "purchaser_setup":    {2026: 2.0,  2028: 1.0,  2030: 0.5},
+    "pm_setup":           {2026: 2.0,  2028: 1.0,  2030: 0.5},
     "purchaser_overhead": 0.25,
     "pm_overhead":        0.25,
 }
 PART_HOURS_CUSTOM_AUTO: dict[str, object] = {
-    "palletize_tech":     {2026: 0.5,  2027: 0.5,  2028: 0.5},
-    "unistrut_tech":      {2026: 6.0,  2027: 6.0,  2028: 6.0},
-    "purchaser_setup":    2.0,
-    "pm_setup":           2.0,
+    "palletize_tech":     {2026: 0.5,  2028: 0.5,  2030: 0.5},
+    "unistrut_tech":      {2026: 6.0,  2028: 2.0,  2030: 0.5},
+    "purchaser_setup":    {2026: 2.0,  2028: 1.0,  2030: 0.5},
+    "pm_setup":           {2026: 2.0,  2028: 1.0,  2030: 0.5},
     "purchaser_overhead": 0.25,
     "pm_overhead":        0.25,
 }
@@ -153,16 +153,16 @@ PART_HOURS_SETS: dict[str, dict] = {
 
 # ── Project-level overhead hours (year-varying, applied once per project) ─────
 PROJECT_HOURS: dict[str, dict[int, float]] = {
-    "purchaser": {2026: 2.0, 2027: 1.0, 2028: 1.0},
-    "pm":        {2026: 5.0, 2027: 3.0, 2028: 1.0},
+    "purchaser": {2026: 2.0, 2028: 1.0, 2030: 1.0},
+    "pm":        {2026: 5.0, 2028: 3.0, 2030: 1.0},
 }
 
 # Keep alias for any legacy references
 LABOR_HOURS = LABOR_HOURS_FORMED_PARTS
 
 # ── Forecast: Extra tech hours (legacy aliases) ───────────────────────────────
-UNISTRUT_TECH_HRS:   dict[int, float] = {2026: 6.0, 2027: 2.0, 2028: 1.0}
-PALLETIZE_TECH_HRS:  dict[int, float] = {2026: 0.5, 2027: 0.5, 2028: 0.5}
+UNISTRUT_TECH_HRS:   dict[int, float] = {2026: 6.0, 2028: 2.0, 2030: 1.0}
+PALLETIZE_TECH_HRS:  dict[int, float] = {2026: 0.5, 2028: 0.5, 2030: 0.5}
 
 # ── Part-level fixed overhead (legacy scalars) ────────────────────────────────
 PURCHASER_SETUP_HRS    = 2.0
@@ -186,6 +186,14 @@ def _get_labor(op: str, year: int, constants_set: str = "formed_parts") -> dict[
     table = LABOR_HOURS_SETS.get(constants_set, LABOR_HOURS_FORMED_PARTS)
     op_data = table.get(op, {})
     return op_data.get(year) or op_data.get(2026) or {"RPE": 0.0, "ME": 0.0, "Tech": 0.0}
+
+def _ph_hours(ph: dict, key: str, year: int, default: float = 0.0) -> float:
+    """Read a part-hour value that may be a flat scalar or a per-year dict."""
+    v = ph.get(key, default)
+    if isinstance(v, dict):
+        got = v.get(year)
+        return got if got is not None else v.get(2026, default)
+    return v
 
 def _robot_improvement(op: str, year: int) -> float:
     cat = OP_ROBOT_CATEGORY.get(op, "forming")
@@ -303,8 +311,8 @@ def calc_first_part_cost(part: PartInputs, year: int) -> dict:
 
     ph              = PART_HOURS_SETS.get(cs, PART_HOURS_FORMED_PARTS)
     rpe_setup       = part.setup_skirt_path_plan_sim_hrs * _rate("RPE", year)
-    purchaser_setup = ph["purchaser_setup"]              * _rate("Purchaser", year)
-    pm_setup        = ph["pm_setup"]                     * _rate("PM",        year)
+    purchaser_setup = _ph_hours(ph, "purchaser_setup", year, 2.0) * _rate("Purchaser", year)
+    pm_setup        = _ph_hours(ph, "pm_setup", year, 2.0)        * _rate("PM",        year)
     prep_shipping   = ph["palletize_tech"].get(year, 0.5)  * _rate("Tech", year)
     unistrut_cost   = (ph["unistrut_tech"].get(year, 6.0)  * _rate("Tech", year)) if part.unistrut else 0.0
     purchaser_ovhd  = ph["purchaser_overhead"]           * _rate("Purchaser", year)
