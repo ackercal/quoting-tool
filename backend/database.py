@@ -181,9 +181,9 @@ def _seed_constants(c):
         ("rate_Tech",      52.52168831168831, "Technician hourly rate",      "rates"),
         ("rate_Purchaser", 77.6948051948052,  "Purchaser hourly rate",       "rates"),
         ("rate_PM",        84.1693722943723,  "Project Manager hourly rate", "rates"),
-        ("rate_Small",     10.95, "Small robot hourly rate",     "rates"),
-        ("rate_Medium",    13.69, "Medium robot hourly rate",    "rates"),
-        ("rate_Large",     18.24, "Large robot hourly rate",     "rates"),
+        ("rate_Small",     11.29, "Small robot hourly rate",     "rates"),
+        ("rate_Medium",    14.19, "Medium robot hourly rate",    "rates"),
+        ("rate_Large",     19.00, "Large robot hourly rate",     "rates"),
         # Robot improvement multipliers (applied to user's current robot time estimate)
         ("robot_improvement_2026", 1.0,    "Robot time improvement factor 2026", "misc"),
         ("robot_improvement_2027", 0.65,   "Robot time improvement factor 2027", "misc"),

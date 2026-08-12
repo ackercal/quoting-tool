@@ -28,6 +28,14 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.8.4',
+    date: '2026-08-07',
+    title: 'Robot rate update',
+    changes: [
+      { type: 'changed', text: 'Updated robot hourly rates: Small $11.29, Medium $14.19, Large $19.00.' },
+    ],
+  },
+  {
     version: '1.8.3',
     date: '2026-08-07',
     title: 'Rate update & projection years',
