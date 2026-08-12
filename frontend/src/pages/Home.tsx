@@ -953,7 +953,7 @@ export default function Home() {
             {[
               {
                 heading: 'Robot Types (Small / Medium / Large)',
-                body: `The robot cell used for forming has its own hourly cost, which varies by size — a Large robot costs significantly more per hour than a Small one. This rate is applied to the effective robot hours (after the improvement factor) for every forming, scanning, and cutting operation across all trials and the production run. Current rates: Small (KR500, M900) $11.29/hr, Medium (KR1500, M1000) $14.19/hr, Large (M2000) $19.00/hr.`,
+                body: `The robot cell used for forming has its own hourly cost, which varies by size — a Large robot costs significantly more per hour than a Small one. This rate is applied to the effective robot hours (after the improvement factor) for every forming, scanning, and cutting operation across all trials and the production run. Current rates: Small (KR500, M900) $10.79/hr, Medium (KR1500, M1000) $13.69/hr, Large (M2000) $18.50/hr.`,
               },
               {
                 heading: 'Sheet Material Cost',
