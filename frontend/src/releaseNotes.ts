@@ -28,6 +28,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.9.0',
+    date: '2026-08-13',
+    title: 'Quotes freeze — with price history',
+    summary: 'Pricing updates no longer silently change existing quotes.',
+    changes: [
+      { type: 'added', text: 'Quotes are now frozen at the pricing in effect when they were saved — a rate/labor update no longer changes existing quotes.' },
+      { type: 'added', text: 'A quote using older pricing shows a flag with the old-vs-current comparison and a “Refresh to current pricing” button.' },
+      { type: 'added', text: 'New “Price History” section (under Project Schedule) shows how a quote’s price changed across pricing updates — not every input edit.' },
+      { type: 'added', text: 'Existing projects were given a reconstructed baseline priced at the robot rates that were live when each was last edited.' },
+      { type: 'changed', text: 'Home cards flag projects that are on outdated pricing.' },
+    ],
+  },
+  {
     version: '1.8.5',
     date: '2026-08-07',
     title: 'Robot rate update',

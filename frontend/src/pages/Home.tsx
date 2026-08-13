@@ -643,7 +643,9 @@ export default function Home() {
                       </div>
                       <div className="project-card-meta">
                         <span>{p.author_name ? `By ${p.author_name}` : 'By —'}</span>
-                        <span>Updated {fmt(p.updated_at)}</span>
+                        {p.pricing_stale
+                          ? <span title="This quote uses older pricing — open it to review or refresh" style={{ color: 'var(--orange, #FF9900)', fontWeight: 600 }}>Outdated pricing</span>
+                          : <span>Updated {fmt(p.updated_at)}</span>}
                       </div>
                     </div>
                   ))}

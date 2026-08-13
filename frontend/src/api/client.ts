@@ -1,4 +1,4 @@
-import type { Project, Part, QuoteResult, Constant, Me, AppUser } from '../types';
+import type { Project, Part, QuoteResult, Constant, Me, AppUser, Snapshot } from '../types';
 
 const BASE = '/api';
 
@@ -38,6 +38,10 @@ export const api = {
 
   // Quote
   getQuote: (projectId: number) => req<QuoteResult>(`/projects/${projectId}/quote`),
+  refreshQuote: (projectId: number) =>
+    req<{ ok: boolean; snapshot_id: number; quoted_price: number }>(`/projects/${projectId}/quote/refresh`, { method: 'POST' }),
+  listSnapshots: (projectId: number) => req<Snapshot[]>(`/projects/${projectId}/snapshots`),
+  getSnapshot: (snapshotId: number) => req<QuoteResult>(`/snapshots/${snapshotId}`),
 
   // Constants
   listConstants: () => req<Constant[]>('/constants'),

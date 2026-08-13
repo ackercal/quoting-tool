@@ -4,6 +4,8 @@ Pricing calculations derived from quote_calc_final_labor_forecasts.xlsx (April 2
   Per-operation robot improvement factors, trial reduction constants
 """
 import math
+import json
+import hashlib
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -663,3 +665,32 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
         "robot_improvement":          {cat: ROBOT_IMPROVEMENT[cat].get(year, 1.0) for cat in ROBOT_IMPROVEMENT},
         "project_category_breakdown": proj_cat,
     }
+
+
+# ── Pricing version fingerprint ───────────────────────────────────────────────
+# A content hash of every constant that affects a quote. It changes automatically
+# whenever any rate / labor-hour / factor changes, so snapshots can detect when a
+# quote was computed under a different pricing set than what's live now.
+
+def _pricing_constants_blob() -> dict:
+    return {
+        "rates":             HOURLY_RATES,
+        "robot_improvement": ROBOT_IMPROVEMENT,
+        "trial_reduction":   TRIAL_REDUCTION,
+        "labor":             LABOR_HOURS_SETS,
+        "part_hours":         PART_HOURS_SETS,
+        "project_hours":     PROJECT_HOURS,
+    }
+
+
+def pricing_version() -> str:
+    """Short stable hash of all pricing constants currently in effect."""
+    blob = json.dumps(_pricing_constants_blob(), sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
+
+
+def pricing_summary() -> str:
+    """Human-readable one-liner of the headline pricing (for labels)."""
+    r = HOURLY_RATES
+    return (f"Robots S/M/L ${r['Small'][2026]:.2f}/${r['Medium'][2026]:.2f}/${r['Large'][2026]:.2f}; "
+            f"tiers 2026/2028/2030")

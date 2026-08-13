@@ -8,6 +8,8 @@ import json
 import os
 
 from database import get_conn, init_db, ADMIN_EMAIL, ADMIN_NAME
+import calculations as _calc
+from pricing_history import rates_as_of
 from calculations import (
     calc_project_quote,
     ProjectInputs,
@@ -21,6 +23,8 @@ from calculations import (
     TRIAL_REDUCTION,
     UNISTRUT_TECH_HRS,
     PALLETIZE_TECH_HRS,
+    pricing_version,
+    pricing_summary,
 )
 
 app = FastAPI(title="Quote Tool API")
@@ -39,6 +43,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     init_db()
+    backfill_reconstructed_baselines()
 
 
 # ── Identity (Azure Easy Auth / Entra sign-in) ────────────────────────────────
@@ -236,60 +241,35 @@ def list_projects(user: dict = Depends(current_user)):
     conn = get_conn()
     rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
 
+    cur_ver = pricing_version()
     result = []
     for row in rows:
         if not _can_see(row, user):
             continue
         proj = row_to_dict(row)
-        parts_rows = conn.execute(
-            "SELECT * FROM parts WHERE project_id=? ORDER BY sort_order, id", (proj["id"],)
-        ).fetchall()
-        parts_data = [row_to_dict(r) for r in parts_rows]
+        proj["parts_count"] = conn.execute(
+            "SELECT COUNT(*) FROM parts WHERE project_id=?", (proj["id"],)
+        ).fetchone()[0]
 
-        proj["parts_count"] = len(parts_data)
-
-        proj["quoted_price"] = None
-        if parts_data:
-            try:
-                proj_inputs = ProjectInputs(
-                    quantity_of_assemblies=proj["quantity_of_assemblies"],
-                    internal_margin=proj["internal_margin"],
-                    year_of_execution=proj["year_of_execution"],
-                    assembly_pp_internal=proj["assembly_pp_internal"],
-                    assembly_pp_external=proj["assembly_pp_external"],
-                    assembly_first_part_setup=proj["assembly_first_part_setup"],
-                    setup_splitting_hrs=proj["setup_splitting_hrs"],
-                    shipping_cost=proj.get("shipping_cost", 0),
-                    osp_margin=proj.get("osp_margin", 0.10),
-                )
-                part_inputs = [PartInputs(
-                    quantity_per_assembly=pt["quantity_per_assembly"],
-                    forming_time_hrs=pt["forming_time_hrs"],
-                    scanning_time_hrs=pt["scanning_time_hrs"],
-                    cutting_time_hrs=pt["cutting_time_hrs"],
-                    est_pre_if_procedures=pt["est_pre_if_procedures"],
-                    est_if_procedures=pt["est_if_procedures"],
-                    cost_per_sheet=pt["cost_per_sheet"],
-                    ht_cost_per_part=pt["ht_cost_per_part"],
-                    unistrut=bool(pt["unistrut"]),
-                    robot_strength=pt["robot_strength"],
-                    pp_internal=pt["pp_internal"],
-                    pp_external=pt["pp_external"],
-                    first_part_additional_setup=pt["first_part_additional_setup"],
-                    setup_skirt_path_plan_sim_hrs=pt["setup_skirt_path_plan_sim_hrs"],
-                    parts_per_sheet=pt.get("parts_per_sheet", 1) or 1,
-                    shipping_cost_per_part=pt.get("shipping_cost_per_part", 0),
-                    manufacturing_method=pt.get("manufacturing_method", "roboformed"),
-                    other_mfg_internal=bool(pt.get("other_mfg_internal", 1)),
-                    other_mfg_cost=pt.get("other_mfg_cost", 0),
-                    other_mfg_cost_dup=pt.get("other_mfg_cost_dup", 0),
-                    labor_constants=proj.get("labor_constants", "formed_parts"),
-                    custom_robot_rate=pt.get("custom_robot_cost_per_hr"),
-                ) for pt in parts_data]
-                quote = calc_project_quote(proj_inputs, part_inputs)
-                proj["quoted_price"] = quote["quoted_price"]
-            except Exception as e:
-                print(f"[list_projects] quote calc failed for project {proj['id']}: {e}")
+        # Frozen quote comes from the active snapshot; a project is "stale" when its
+        # snapshot was computed under a different pricing version than what's live now.
+        snap = conn.execute(
+            "SELECT quoted_price, pricing_version FROM quote_snapshots WHERE project_id=? AND is_active=1",
+            (proj["id"],),
+        ).fetchone()
+        if snap is not None:
+            proj["quoted_price"] = snap["quoted_price"]
+            proj["pricing_stale"] = snap["pricing_version"] != cur_ver
+        else:
+            # No snapshot yet — show a live preview (created for real when the quote is opened).
+            proj["quoted_price"] = None
+            proj["pricing_stale"] = False
+            if proj["parts_count"]:
+                try:
+                    _, parts_data = _load_project_and_parts(conn, proj["id"])
+                    proj["quoted_price"] = compute_quote_result(proj, parts_data)["quoted_price"]
+                except Exception as e:
+                    print(f"[list_projects] quote preview failed for project {proj['id']}: {e}")
 
         result.append(proj)
 
@@ -381,6 +361,7 @@ def update_project(pid: int, data: ProjectUpdate, user: dict = Depends(current_u
     conn.commit()
     row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
     conn.close()
+    _recompute_active_snapshot(pid, "Edited project settings", user.get("email"))
     return row_to_dict(row)
 
 
@@ -453,7 +434,7 @@ def duplicate_project(pid: int, user: dict = Depends(current_user)):
 # ── Parts ─────────────────────────────────────────────────────────────────────
 
 @app.post("/projects/{pid}/parts", status_code=201)
-def create_part(pid: int, data: PartCreate):
+def create_part(pid: int, data: PartCreate, user: dict = Depends(current_user)):
     conn = get_conn()
     project = conn.execute("SELECT id FROM projects WHERE id=?", (pid,)).fetchone()
     if not project:
@@ -486,11 +467,12 @@ def create_part(pid: int, data: PartCreate):
     conn.commit()
     row = conn.execute("SELECT * FROM parts WHERE id=?", (part_id,)).fetchone()
     conn.close()
+    _recompute_active_snapshot(pid, "Added a part", user.get("email"))
     return row_to_dict(row)
 
 
 @app.put("/parts/{part_id}")
-def update_part(part_id: int, data: PartUpdate):
+def update_part(part_id: int, data: PartUpdate, user: dict = Depends(current_user)):
     conn = get_conn()
     conn.execute(
         """UPDATE parts SET
@@ -527,34 +509,27 @@ def update_part(part_id: int, data: PartUpdate):
     conn2.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (p["project_id"],))
     conn2.commit()
     conn2.close()
+    _recompute_active_snapshot(p["project_id"], "Edited a part", user.get("email"))
     return p
 
 
 @app.delete("/parts/{part_id}", status_code=204)
-def delete_part(part_id: int):
+def delete_part(part_id: int, user: dict = Depends(current_user)):
     conn = get_conn()
     row = conn.execute("SELECT project_id FROM parts WHERE id=?", (part_id,)).fetchone()
+    pid = row["project_id"] if row else None
     if row:
         conn.execute("DELETE FROM parts WHERE id=?", (part_id,))
-        conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (row["project_id"],))
+        conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (pid,))
     conn.commit()
     conn.close()
+    if pid is not None:
+        _recompute_active_snapshot(pid, "Removed a part", user.get("email"))
 
 
-# ── Quote calculation ─────────────────────────────────────────────────────────
+# ── Quote calculation & snapshots ─────────────────────────────────────────────
 
-@app.get("/projects/{pid}/quote")
-def get_quote(pid: int):
-    conn = get_conn()
-    proj_row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
-    if not proj_row:
-        raise HTTPException(404, "Project not found")
-    parts_rows = conn.execute(
-        "SELECT * FROM parts WHERE project_id=? ORDER BY sort_order, id", (pid,)
-    ).fetchall()
-    conn.close()
-
-    p = row_to_dict(proj_row)
+def _build_quote_inputs(p: dict, parts_data: list[dict]):
     proj_inputs = ProjectInputs(
         quantity_of_assemblies=p["quantity_of_assemblies"],
         internal_margin=p["internal_margin"],
@@ -566,52 +541,41 @@ def get_quote(pid: int):
         shipping_cost=p.get("shipping_cost", 0),
         osp_margin=p.get("osp_margin", 0.10),
     )
-
-    part_inputs = []
-    parts_data = [row_to_dict(r) for r in parts_rows]
     lc = p.get("labor_constants", "formed_parts") or "formed_parts"
-    for pt in parts_data:
-        part_inputs.append(PartInputs(
-            quantity_per_assembly=pt["quantity_per_assembly"],
-            forming_time_hrs=pt["forming_time_hrs"],
-            scanning_time_hrs=pt["scanning_time_hrs"],
-            cutting_time_hrs=pt["cutting_time_hrs"],
-            est_pre_if_procedures=pt["est_pre_if_procedures"],
-            est_if_procedures=pt["est_if_procedures"],
-            cost_per_sheet=pt["cost_per_sheet"],
-            ht_cost_per_part=pt["ht_cost_per_part"],
-            unistrut=bool(pt["unistrut"]),
-            robot_strength=pt["robot_strength"],
-            pp_internal=pt["pp_internal"],
-            pp_external=pt["pp_external"],
-            first_part_additional_setup=pt["first_part_additional_setup"],
-            setup_skirt_path_plan_sim_hrs=pt["setup_skirt_path_plan_sim_hrs"],
-            parts_per_sheet=pt.get("parts_per_sheet", 1) or 1,
-            shipping_cost_per_part=pt.get("shipping_cost_per_part", 0),
-            manufacturing_method=pt.get("manufacturing_method", "roboformed"),
-            other_mfg_internal=bool(pt.get("other_mfg_internal", 1)),
-            other_mfg_cost=pt.get("other_mfg_cost", 0),
-            other_mfg_cost_dup=pt.get("other_mfg_cost_dup", 0),
-            labor_constants=lc,
-            custom_robot_rate=pt.get("custom_robot_cost_per_hr"),
-        ))
+    part_inputs = [PartInputs(
+        quantity_per_assembly=pt["quantity_per_assembly"],
+        forming_time_hrs=pt["forming_time_hrs"],
+        scanning_time_hrs=pt["scanning_time_hrs"],
+        cutting_time_hrs=pt["cutting_time_hrs"],
+        est_pre_if_procedures=pt["est_pre_if_procedures"],
+        est_if_procedures=pt["est_if_procedures"],
+        cost_per_sheet=pt["cost_per_sheet"],
+        ht_cost_per_part=pt["ht_cost_per_part"],
+        unistrut=bool(pt["unistrut"]),
+        robot_strength=pt["robot_strength"],
+        pp_internal=pt["pp_internal"],
+        pp_external=pt["pp_external"],
+        first_part_additional_setup=pt["first_part_additional_setup"],
+        setup_skirt_path_plan_sim_hrs=pt["setup_skirt_path_plan_sim_hrs"],
+        parts_per_sheet=pt.get("parts_per_sheet", 1) or 1,
+        shipping_cost_per_part=pt.get("shipping_cost_per_part", 0),
+        manufacturing_method=pt.get("manufacturing_method", "roboformed"),
+        other_mfg_internal=bool(pt.get("other_mfg_internal", 1)),
+        other_mfg_cost=pt.get("other_mfg_cost", 0),
+        other_mfg_cost_dup=pt.get("other_mfg_cost_dup", 0),
+        labor_constants=lc,
+        custom_robot_rate=pt.get("custom_robot_cost_per_hr"),
+    ) for pt in parts_data]
+    return proj_inputs, part_inputs
 
+
+def compute_quote_result(p: dict, parts_data: list[dict]) -> dict:
+    """Compute the full quote result live from the current pricing constants."""
+    proj_inputs, part_inputs = _build_quote_inputs(p, parts_data)
     result = calc_project_quote(proj_inputs, part_inputs)
-
-    # Year-over-year comparison using the same inputs but varying the year
     year_prices = {}
     for yr in [2026, 2028, 2030]:
-        yr_inputs = ProjectInputs(
-            quantity_of_assemblies=p["quantity_of_assemblies"],
-            internal_margin=p["internal_margin"],
-            year_of_execution=yr,
-            assembly_pp_internal=p["assembly_pp_internal"],
-            assembly_pp_external=p["assembly_pp_external"],
-            assembly_first_part_setup=p["assembly_first_part_setup"],
-            setup_splitting_hrs=p["setup_splitting_hrs"],
-            shipping_cost=p.get("shipping_cost", 0),
-            osp_margin=p.get("osp_margin", 0.10),
-        )
+        yr_inputs, _ = _build_quote_inputs({**p, "year_of_execution": yr}, parts_data)
         yr_result = calc_project_quote(yr_inputs, part_inputs)
         year_prices[yr] = {
             "quoted_price":         yr_result["quoted_price"],
@@ -620,9 +584,216 @@ def get_quote(pid: int):
             "dup_assembly_price":   yr_result["dup_assembly_price"],
         }
     result["year_prices"] = year_prices
-
     result["project"] = p
     result["parts"] = parts_data
+    return result
+
+
+def _load_project_and_parts(conn, pid: int):
+    proj_row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+    if not proj_row:
+        return None, None
+    parts_rows = conn.execute(
+        "SELECT * FROM parts WHERE project_id=? ORDER BY sort_order, id", (pid,)
+    ).fetchall()
+    return row_to_dict(proj_row), [row_to_dict(r) for r in parts_rows]
+
+
+def _snapshot_meta(row) -> dict:
+    d = dict(row)
+    d.pop("result_json", None)
+    d.pop("inputs_json", None)
+    d["is_active"] = bool(d["is_active"])
+    d["is_reconstructed"] = bool(d.get("is_reconstructed", 0))
+    return d
+
+
+def _create_snapshot(conn, pid: int, result: dict, inputs: dict, *, label: str,
+                     make_active: bool, created_by: Optional[str] = None,
+                     reconstructed: bool = False) -> int:
+    if make_active:
+        conn.execute("UPDATE quote_snapshots SET is_active=0 WHERE project_id=?", (pid,))
+    cur = conn.execute(
+        """INSERT INTO quote_snapshots
+           (project_id, created_by, label, pricing_version, pricing_summary,
+            quoted_price, result_json, inputs_json, is_active, is_reconstructed)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (pid, created_by, label, pricing_version(), pricing_summary(),
+         result.get("quoted_price"), json.dumps(result), json.dumps(inputs),
+         1 if make_active else 0, 1 if reconstructed else 0),
+    )
+    return cur.lastrowid
+
+
+def _recompute_active_snapshot(pid: int, label: str, created_by: Optional[str] = None) -> None:
+    """Recompute the quote at CURRENT pricing and store it as the active snapshot.
+    If the current active snapshot was on a *different* pricing version (e.g. a
+    customer-facing quote frozen under old pricing), it's archived to history first
+    so it isn't lost; same-pricing edits just update in place (no history spam)."""
+    conn = get_conn()
+    try:
+        p, parts_data = _load_project_and_parts(conn, pid)
+        if not p:
+            return
+        active = conn.execute(
+            "SELECT * FROM quote_snapshots WHERE project_id=? AND is_active=1", (pid,)
+        ).fetchone()
+        result = compute_quote_result(p, parts_data)
+        inputs = {"project": p, "parts": parts_data}
+        if active is not None and active["pricing_version"] == pricing_version():
+            conn.execute(
+                """UPDATE quote_snapshots SET result_json=?, inputs_json=?, quoted_price=?,
+                   pricing_summary=?, created_at=datetime('now'), label=? WHERE id=?""",
+                (json.dumps(result), json.dumps(inputs), result.get("quoted_price"),
+                 pricing_summary(), label, active["id"]),
+            )
+        else:
+            _create_snapshot(conn, pid, result, inputs, label=label,
+                             make_active=True, created_by=created_by)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def backfill_reconstructed_baselines() -> None:
+    """One-time: give every existing project a reconstructed baseline snapshot priced at the
+    robot rates that were live when it was last edited. Runs once (guarded by user_version>=2),
+    only for projects that don't already have a snapshot."""
+    conn = get_conn()
+    try:
+        ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if ver >= 2:
+            return
+        proj_ids = [r[0] for r in conn.execute("SELECT id FROM projects").fetchall()]
+        for pid in proj_ids:
+            has = conn.execute("SELECT 1 FROM quote_snapshots WHERE project_id=? LIMIT 1", (pid,)).fetchone()
+            if has:
+                continue
+            p, parts_data = _load_project_and_parts(conn, pid)
+            if not p:
+                continue
+            rates = rates_as_of(p.get("updated_at"))
+            orig = _calc.HOURLY_RATES
+            patched = dict(orig)
+            for k in ("Small", "Medium", "Large"):
+                patched[k] = {2026: rates[k], 2028: rates[k], 2030: rates[k]}
+            _calc.HOURLY_RATES = patched
+            try:
+                result = compute_quote_result(p, parts_data)
+                label = (f"Reconstructed baseline — robots "
+                         f"${rates['Small']:.2f}/${rates['Medium']:.2f}/${rates['Large']:.2f}")
+                _create_snapshot(conn, pid, result, {"project": p, "parts": parts_data},
+                                 label=label, make_active=True, reconstructed=True)
+            except Exception as e:
+                print(f"[backfill] project {pid} failed: {e}")
+            finally:
+                _calc.HOURLY_RATES = orig
+        conn.execute("PRAGMA user_version = 2")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@app.get("/projects/{pid}/quote")
+def get_quote(pid: int, user: dict = Depends(current_user)):
+    conn = get_conn()
+    p, parts_data = _load_project_and_parts(conn, pid)
+    if not p:
+        conn.close()
+        raise HTTPException(404, "Project not found")
+    if not _can_see(p, user):
+        conn.close()
+        raise HTTPException(403, "You don't have access to this project")
+
+    active = conn.execute(
+        "SELECT * FROM quote_snapshots WHERE project_id=? AND is_active=1", (pid,)
+    ).fetchone()
+    if active is None:
+        # First time this project's quote is viewed — establish the baseline snapshot.
+        result = compute_quote_result(p, parts_data)
+        _create_snapshot(conn, pid, result, {"project": p, "parts": parts_data},
+                         label="Initial quote", make_active=True, created_by=user["email"])
+        conn.commit()
+        active = conn.execute(
+            "SELECT * FROM quote_snapshots WHERE project_id=? AND is_active=1", (pid,)
+        ).fetchone()
+
+    frozen = json.loads(active["result_json"])
+    cur_ver = pricing_version()
+    stale = active["pricing_version"] != cur_ver
+
+    # When stale, also compute what the quote would be under current pricing (for the
+    # "newer pricing available — was X, now Y" comparison), without saving it.
+    if stale:
+        preview = compute_quote_result(p, parts_data)
+        frozen["current_preview"] = {
+            "quoted_price":         preview["quoted_price"],
+            "first_assembly_price": preview["first_assembly_price"],
+            "dup_assembly_price":   preview["dup_assembly_price"],
+            "year_prices":          preview["year_prices"],
+        }
+    conn.close()
+
+    frozen["snapshot"] = _snapshot_meta(active)
+    frozen["stale"] = stale
+    frozen["current_pricing_version"] = cur_ver
+    frozen["current_pricing_summary"] = pricing_summary()
+    return frozen
+
+
+@app.post("/projects/{pid}/quote/refresh")
+def refresh_quote(pid: int, user: dict = Depends(current_user)):
+    """Adopt current pricing: recompute, archive the prior active snapshot to history,
+    and make the new one active."""
+    conn = get_conn()
+    p, parts_data = _load_project_and_parts(conn, pid)
+    if not p:
+        conn.close()
+        raise HTTPException(404, "Project not found")
+    if not _can_see(p, user):
+        conn.close()
+        raise HTTPException(403, "You don't have access to this project")
+    result = compute_quote_result(p, parts_data)
+    sid = _create_snapshot(conn, pid, result, {"project": p, "parts": parts_data},
+                           label="Refreshed to current pricing", make_active=True,
+                           created_by=user["email"])
+    conn.commit()
+    conn.close()
+    return {"ok": True, "snapshot_id": sid, "quoted_price": result.get("quoted_price")}
+
+
+@app.get("/projects/{pid}/snapshots")
+def list_snapshots(pid: int, user: dict = Depends(current_user)):
+    conn = get_conn()
+    p, _ = _load_project_and_parts(conn, pid)
+    if not p:
+        conn.close()
+        raise HTTPException(404, "Project not found")
+    if not _can_see(p, user):
+        conn.close()
+        raise HTTPException(403, "You don't have access to this project")
+    rows = conn.execute(
+        "SELECT * FROM quote_snapshots WHERE project_id=? ORDER BY is_active DESC, created_at DESC, id DESC",
+        (pid,),
+    ).fetchall()
+    conn.close()
+    return [_snapshot_meta(r) for r in rows]
+
+
+@app.get("/snapshots/{sid}")
+def get_snapshot(sid: int, user: dict = Depends(current_user)):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM quote_snapshots WHERE id=?", (sid,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "Snapshot not found")
+    p, _ = _load_project_and_parts(conn, row["project_id"])
+    conn.close()
+    if p and not _can_see(p, user):
+        raise HTTPException(403, "You don't have access to this project")
+    result = json.loads(row["result_json"])
+    result["snapshot"] = _snapshot_meta(row)
+    result["stale"] = row["pricing_version"] != pricing_version()
     return result
 
 

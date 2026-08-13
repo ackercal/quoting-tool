@@ -99,6 +99,23 @@ def init_db():
         category    TEXT
     );
 
+    -- Frozen, self-contained quote snapshots (versioned history per project).
+    CREATE TABLE IF NOT EXISTS quote_snapshots (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id       INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        created_at       TEXT    DEFAULT (datetime('now')),
+        created_by       TEXT,
+        label            TEXT,
+        pricing_version  TEXT,               -- fingerprint of the constants used
+        pricing_summary  TEXT,               -- human-readable pricing description
+        quoted_price     REAL,               -- denormalized for quick list display
+        result_json      TEXT,               -- full computed quote result (frozen)
+        inputs_json      TEXT,               -- project + parts inputs at snapshot time
+        is_active        INTEGER NOT NULL DEFAULT 0,   -- 1 = the project's displayed quote
+        is_reconstructed INTEGER NOT NULL DEFAULT 0    -- 1 = retroactively rebuilt baseline
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapshots_project ON quote_snapshots(project_id);
+
     -- People who have accessed the app (identity comes from Entra sign-in).
     CREATE TABLE IF NOT EXISTS users (
         email                TEXT PRIMARY KEY,

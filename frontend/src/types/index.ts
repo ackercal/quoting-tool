@@ -20,6 +20,7 @@ export interface Project {
   access_tag: string;
   parts_count?: number;
   quoted_price?: number | null;
+  pricing_stale?: boolean;
   created_at: string;
   updated_at: string;
   parts?: Part[];
@@ -133,6 +134,19 @@ export interface YearPrice {
   dup_assembly_price: number;
 }
 
+export interface Snapshot {
+  id: number;
+  project_id: number;
+  created_at: string;
+  created_by: string | null;
+  label: string | null;
+  pricing_version: string | null;
+  pricing_summary: string | null;
+  quoted_price: number | null;
+  is_active: boolean;
+  is_reconstructed: boolean;
+}
+
 export interface QuoteResult {
   total_cost: number;
   quoted_price: number;
@@ -150,6 +164,17 @@ export interface QuoteResult {
   project_category_breakdown?: CategoryBreakdown;
   project: Project;
   parts: Part[];
+  // snapshot / versioning metadata (added by the snapshot layer)
+  snapshot?: Snapshot;
+  stale?: boolean;
+  current_pricing_summary?: string;
+  current_pricing_version?: string;
+  current_preview?: {
+    quoted_price: number;
+    first_assembly_price: number;
+    dup_assembly_price: number;
+    year_prices: Record<number, YearPrice>;
+  };
 }
 
 export interface Constant {
