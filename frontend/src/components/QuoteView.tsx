@@ -16,6 +16,11 @@ const fmtWhen = (iso?: string | null) => {
   const d = new Date(iso.replace(' ', 'T') + 'Z')  // SQLite stores UTC
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
+const fmtDate = (iso?: string | null) => {
+  if (!iso) return '—'
+  const d = new Date(iso.replace(' ', 'T') + 'Z')
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0, color: 'var(--orange, #FF9900)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }
 const smallPrimaryBtn: React.CSSProperties = { background: 'var(--orange, #FF9900)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }
 
@@ -710,6 +715,7 @@ export default function QuoteView({ projectId }: Props) {
               <thead>
                 <tr>
                   <th>Version</th>
+                  <th>Date</th>
                   <th className="right">Total Price</th>
                   <th className="right">vs current</th>
                 </tr>
@@ -723,6 +729,7 @@ export default function QuoteView({ projectId }: Props) {
                         {r.version}
                         {r.is_current && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--orange, #FF9900)', marginLeft: 8 }}>current</span>}
                       </td>
+                      <td style={{ whiteSpace: 'nowrap', color: 'var(--gray-500)', fontSize: 12 }}>{fmtDate(r.effective)}</td>
                       <td className="right" style={{ fontWeight: 600 }}>{$(r.quoted_price)}</td>
                       <td className="right" style={{ fontSize: 12, color: r.is_current ? 'var(--gray-400)' : (delta > 0 ? '#c0392b' : '#1e7e34') }}>
                         {r.is_current ? '—' : `${delta >= 0 ? '+' : '−'}${$(Math.abs(delta))}`}
