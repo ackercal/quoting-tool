@@ -9,7 +9,7 @@ import os
 
 from database import get_conn, init_db, ADMIN_EMAIL, ADMIN_NAME
 import calculations as _calc
-from pricing_history import rates_as_of
+from pricing_history import rates_as_of, RATE_EPOCHS
 from calculations import (
     calc_project_quote,
     ProjectInputs,
@@ -298,6 +298,7 @@ def create_project(data: ProjectCreate, user: dict = Depends(current_user)):
     conn.commit()
     row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
     conn.close()
+    _log_edit(pid, user, "Created project")
     return row_to_dict(row)
 
 
@@ -362,6 +363,7 @@ def update_project(pid: int, data: ProjectUpdate, user: dict = Depends(current_u
     row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
     conn.close()
     _recompute_active_snapshot(pid, "Edited project settings", user.get("email"))
+    _log_edit(pid, user, "Edited project settings")
     return row_to_dict(row)
 
 
@@ -428,6 +430,7 @@ def duplicate_project(pid: int, user: dict = Depends(current_user)):
     conn.commit()
     new_proj = row_to_dict(conn.execute("SELECT * FROM projects WHERE id=?", (new_pid,)).fetchone())
     conn.close()
+    _log_edit(new_pid, user, f"Created as a copy of '{src['name']}'")
     return new_proj
 
 
@@ -468,6 +471,7 @@ def create_part(pid: int, data: PartCreate, user: dict = Depends(current_user)):
     row = conn.execute("SELECT * FROM parts WHERE id=?", (part_id,)).fetchone()
     conn.close()
     _recompute_active_snapshot(pid, "Added a part", user.get("email"))
+    _log_edit(pid, user, f"Added part '{data.name}'")
     return row_to_dict(row)
 
 
@@ -510,6 +514,7 @@ def update_part(part_id: int, data: PartUpdate, user: dict = Depends(current_use
     conn2.commit()
     conn2.close()
     _recompute_active_snapshot(p["project_id"], "Edited a part", user.get("email"))
+    _log_edit(p["project_id"], user, f"Edited part '{p['name']}'")
     return p
 
 
@@ -525,6 +530,7 @@ def delete_part(part_id: int, user: dict = Depends(current_user)):
     conn.close()
     if pid is not None:
         _recompute_active_snapshot(pid, "Removed a part", user.get("email"))
+        _log_edit(pid, user, "Removed a part")
 
 
 # ── Quote calculation & snapshots ─────────────────────────────────────────────
@@ -653,6 +659,73 @@ def _recompute_active_snapshot(pid: int, label: str, created_by: Optional[str] =
         conn.commit()
     finally:
         conn.close()
+
+
+def _log_edit(pid: int, user: dict, summary: str) -> None:
+    """Record an input-change audit entry (who + when). Best-effort."""
+    try:
+        conn = get_conn()
+        conn.execute(
+            "INSERT INTO project_edits (project_id, user_email, user_name, summary) VALUES (?,?,?,?)",
+            (pid, user.get("email"), user.get("display_name") or user.get("_name"), summary),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[log_edit] project {pid} failed: {e}")
+
+
+@app.get("/projects/{pid}/price-history")
+def price_history(pid: int, user: dict = Depends(current_user)):
+    """For the project's CURRENT inputs, what the quote would price at under each past
+    pricing version — so you can see how pricing updates moved this quote's number."""
+    conn = get_conn()
+    p, parts_data = _load_project_and_parts(conn, pid)
+    conn.close()
+    if not p:
+        raise HTTPException(404, "Project not found")
+    if not _can_see(p, user):
+        raise HTTPException(403, "You don't have access to this project")
+
+    live = {k: _calc.HOURLY_RATES[k][2026] for k in ("Small", "Medium", "Large")}
+    orig = _calc.HOURLY_RATES
+    out = []
+    try:
+        for eff, rates in RATE_EPOCHS:
+            patched = dict(orig)
+            for k in ("Small", "Medium", "Large"):
+                patched[k] = {2026: rates[k], 2028: rates[k], 2030: rates[k]}
+            _calc.HOURLY_RATES = patched
+            res = compute_quote_result(p, parts_data)
+            out.append({
+                "effective":            None if eff.startswith("0000") else eff,
+                "rates":                rates,
+                "quoted_price":         res["quoted_price"],
+                "first_assembly_price": res["first_assembly_price"],
+                "dup_assembly_price":   res["dup_assembly_price"],
+                "is_current":           all(abs(rates[k] - live[k]) < 1e-9 for k in ("Small", "Medium", "Large")),
+            })
+    finally:
+        _calc.HOURLY_RATES = orig
+    return out
+
+
+@app.get("/projects/{pid}/edits")
+def list_edits(pid: int, user: dict = Depends(current_user)):
+    """Audit log of who changed this project's inputs and when (not app/pricing updates)."""
+    conn = get_conn()
+    p, _ = _load_project_and_parts(conn, pid)
+    if not p:
+        conn.close()
+        raise HTTPException(404, "Project not found")
+    if not _can_see(p, user):
+        conn.close()
+        raise HTTPException(403, "You don't have access to this project")
+    rows = conn.execute(
+        "SELECT * FROM project_edits WHERE project_id=? ORDER BY created_at DESC, id DESC LIMIT 200", (pid,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def backfill_reconstructed_baselines() -> None:

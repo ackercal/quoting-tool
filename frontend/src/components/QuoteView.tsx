@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api/client'
-import type { QuoteResult, PartCostDetail, Part, YearPrice, CategoryBreakdown, Snapshot } from '../types'
+import type { QuoteResult, PartCostDetail, Part, YearPrice, CategoryBreakdown, PriceHistoryRow, ProjectEdit } from '../types'
 import QuotePDFContent from './QuotePDFContent'
 import { partDisplayName } from '../utils/manufacturing'
 
@@ -339,32 +339,24 @@ export default function QuoteView({ projectId }: Props) {
   const [error, setError]     = useState('')
   const [exporting, setExport]       = useState(false)
   const [scheduleOpen, setScheduleOpen] = useState(false)
-  const [snapshots, setSnapshots]       = useState<Snapshot[] | null>(null)
-  const [viewingSnapshotId, setViewing] = useState<number | null>(null)
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryRow[] | null>(null)
+  const [edits, setEdits]               = useState<ProjectEdit[] | null>(null)
   const [refreshing, setRefreshing]     = useState(false)
   const [reloadKey, setReloadKey]       = useState(0)
   const pdfRef = useRef<HTMLDivElement>(null)
 
-  function loadSnapshots() { api.listSnapshots(projectId).then(setSnapshots).catch(() => setSnapshots([])) }
-
-  // Load the project's ACTIVE (current) quote snapshot + the price-history list.
+  // Load the frozen quote + the pricing-version price history + the input-edit audit log.
   useEffect(() => {
     setLoad(true)
-    setViewing(null)
     api.getQuote(projectId)
       .then(setQuote)
       .catch(e => setError(e.message))
       .finally(() => setLoad(false))
-    loadSnapshots()
+    api.getPriceHistory(projectId).then(setPriceHistory).catch(() => setPriceHistory([]))
+    api.listEdits(projectId).then(setEdits).catch(() => setEdits([]))
   }, [projectId, reloadKey])
 
   function reloadActive() { setReloadKey(k => k + 1) }
-
-  function viewSnapshot(sid: number) {
-    setLoad(true)
-    setViewing(sid)
-    api.getSnapshot(sid).then(setQuote).catch(e => setError(e.message)).finally(() => setLoad(false))
-  }
 
   async function doRefresh() {
     setRefreshing(true)
@@ -409,42 +401,31 @@ export default function QuoteView({ projectId }: Props) {
       <div style={{ borderBottom: '1px solid var(--gray-200)', marginBottom: 20 }} />
 
       {/* ── Pricing version / snapshot status ── */}
-      {quote.snapshot && (() => {
-        const snap = quote.snapshot!
-        const isHistorical = viewingSnapshotId != null && !snap.is_active
-        return (
-          <div style={{ marginBottom: 22 }}>
-            {isHistorical ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: 'var(--gray-100)', border: '1px solid var(--gray-300)', borderRadius: 10, padding: '10px 16px' }}>
-                <span style={{ fontSize: 13, color: 'var(--gray-700)' }}>
-                  Viewing an archived version — saved <strong>{fmtWhen(snap.created_at)}</strong>{snap.label ? ` · ${snap.label}` : ''}{snap.is_reconstructed ? ' · reconstructed' : ''}
+      {quote.snapshot && (
+        <div style={{ marginBottom: 22 }}>
+          {quote.stale ? (
+            <div style={{ background: 'var(--orange-soft, #fff3e0)', border: '1px solid var(--orange, #FF9900)', borderRadius: 10, padding: '12px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14, color: 'var(--gray-800, #333)' }}>
+                  <strong>This quote uses older pricing</strong> (saved {fmtWhen(quote.snapshot.created_at)}). Newer pricing is available.
                 </span>
-                <button onClick={reloadActive} style={linkBtn}>← Back to current quote</button>
+                <button onClick={doRefresh} disabled={refreshing} style={smallPrimaryBtn}>
+                  {refreshing ? 'Refreshing…' : 'Refresh to current pricing'}
+                </button>
               </div>
-            ) : quote.stale ? (
-              <div style={{ background: 'var(--orange-soft, #fff3e0)', border: '1px solid var(--orange, #FF9900)', borderRadius: 10, padding: '12px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 14, color: 'var(--gray-800, #333)' }}>
-                    <strong>This quote uses older pricing</strong> (saved {fmtWhen(snap.created_at)}). Newer pricing is available.
-                  </span>
-                  <button onClick={doRefresh} disabled={refreshing} style={smallPrimaryBtn}>
-                    {refreshing ? 'Refreshing…' : 'Refresh to current pricing'}
-                  </button>
+              {quote.current_preview && (
+                <div style={{ fontSize: 13, color: 'var(--gray-600)', marginTop: 8 }}>
+                  This quote: <strong>{$(quote.quoted_price)}</strong> &nbsp;→&nbsp; at current pricing: <strong>{$(quote.current_preview.quoted_price)}</strong>
                 </div>
-                {quote.current_preview && (
-                  <div style={{ fontSize: 13, color: 'var(--gray-600)', marginTop: 8 }}>
-                    This quote: <strong>{$(quote.quoted_price)}</strong> &nbsp;→&nbsp; at current pricing: <strong>{$(quote.current_preview.quoted_price)}</strong>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>
-                Pricing current · saved {fmtWhen(snap.created_at)}{snap.is_reconstructed ? ' · reconstructed baseline' : ''}
-              </div>
-            )}
-          </div>
-        )
-      })()}
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+              Pricing current · saved {fmtWhen(quote.snapshot.created_at)}{quote.snapshot.is_reconstructed ? ' · reconstructed baseline' : ''}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Project details bar ── */}
       <div style={{ display: 'flex', gap: 32, marginBottom: 24, flexWrap: 'wrap' }}>
@@ -711,46 +692,80 @@ export default function QuoteView({ projectId }: Props) {
         )
       })()}
 
-      {/* ── Price History ── */}
+      {/* ── Price History (across pricing updates) ── */}
       <div className="quote-section" style={{ marginTop: 24 }}>
         <div className="quote-section-header">
           <span className="quote-section-title">Price History</span>
         </div>
         <div style={{ fontSize: 12, color: 'var(--gray-500)', padding: '0 0 10px', lineHeight: 1.6 }}>
-          Shows how this quote's <strong>price has changed across pricing updates</strong> (rate / labor-constant changes) —
-          not every edit to the project's inputs. Click a version to view that full quote.
+          With this project's <strong>current inputs</strong>, what this quote would price at under each past pricing update
+          (robot-rate changes) — showing how pricing updates have moved this quote. This is <em>not</em> a log of input changes
+          (see Change History below).
         </div>
-        {snapshots === null ? (
+        {priceHistory === null ? (
           <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 0' }}>Loading…</div>
-        ) : snapshots.length <= 1 ? (
-          <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 0' }}>
-            No pricing updates yet — this quote has only its original pricing.
-          </div>
+        ) : (() => {
+          const current = priceHistory.find(r => r.is_current)?.quoted_price ?? priceHistory[0]?.quoted_price ?? 0
+          return (
+            <table className="quote-table">
+              <thead>
+                <tr>
+                  <th>Pricing in effect</th>
+                  <th>Robot rates (S / M / L)</th>
+                  <th className="right">Total Price</th>
+                  <th className="right">vs current</th>
+                </tr>
+              </thead>
+              <tbody>
+                {priceHistory.map((r, i) => {
+                  const delta = r.quoted_price - current
+                  return (
+                    <tr key={i} style={{ background: r.is_current ? 'var(--gray-100)' : undefined }}>
+                      <td style={{ whiteSpace: 'nowrap', fontWeight: r.is_current ? 600 : 400 }}>
+                        {r.is_current ? 'Current' : r.effective ? fmtWhen(r.effective) : 'Original'}
+                        {r.is_current && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--orange, #FF9900)', marginLeft: 8 }}>now</span>}
+                      </td>
+                      <td style={{ color: 'var(--gray-500)', fontSize: 12 }}>
+                        ${r.rates.Small.toFixed(2)} / ${r.rates.Medium.toFixed(2)} / ${r.rates.Large.toFixed(2)}
+                      </td>
+                      <td className="right" style={{ fontWeight: 600 }}>{$(r.quoted_price)}</td>
+                      <td className="right" style={{ fontSize: 12, color: r.is_current ? 'var(--gray-400)' : (delta > 0 ? '#c0392b' : '#1e7e34') }}>
+                        {r.is_current ? '—' : `${delta >= 0 ? '+' : '−'}${$(Math.abs(delta))}`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )
+        })()}
+      </div>
+
+      {/* ── Change History (who edited the inputs, and when) ── */}
+      <div className="quote-section" style={{ marginTop: 24 }}>
+        <div className="quote-section-header">
+          <span className="quote-section-title">Change History</span>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--gray-500)', padding: '0 0 10px', lineHeight: 1.6 }}>
+          Who changed this quote's inputs, and when. (Pricing/app updates are not shown here — see Price History above.)
+        </div>
+        {edits === null ? (
+          <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 0' }}>Loading…</div>
+        ) : edits.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 0' }}>No input changes recorded yet.</div>
         ) : (
           <table className="quote-table">
             <thead>
-              <tr>
-                <th>Saved</th>
-                <th>Pricing</th>
-                <th className="right">Total Price</th>
-                <th></th>
-              </tr>
+              <tr><th>When</th><th>Who</th><th>Change</th></tr>
             </thead>
             <tbody>
-              {snapshots.map(s => {
-                const selected = viewingSnapshotId === s.id || (viewingSnapshotId == null && s.is_active)
-                return (
-                  <tr key={s.id} onClick={() => viewSnapshot(s.id)}
-                    style={{ cursor: 'pointer', background: selected ? 'var(--gray-100)' : undefined }}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{fmtWhen(s.created_at)}</td>
-                    <td style={{ color: 'var(--gray-500)', fontSize: 12 }}>
-                      {s.pricing_summary || '—'}{s.is_reconstructed ? ' · reconstructed' : ''}
-                    </td>
-                    <td className="right" style={{ fontWeight: 600 }}>{s.quoted_price != null ? $(s.quoted_price) : '—'}</td>
-                    <td className="right">{s.is_active && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--orange, #FF9900)' }}>Current</span>}</td>
-                  </tr>
-                )
-              })}
+              {edits.map(e => (
+                <tr key={e.id}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{fmtWhen(e.created_at)}</td>
+                  <td>{e.user_name || e.user_email || '—'}</td>
+                  <td style={{ color: 'var(--gray-600)' }}>{e.summary || '—'}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )}

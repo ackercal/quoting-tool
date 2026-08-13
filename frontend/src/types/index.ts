@@ -147,6 +147,24 @@ export interface Snapshot {
   is_reconstructed: boolean;
 }
 
+export interface PriceHistoryRow {
+  effective: string | null; // when this pricing became live; null = earliest/original
+  rates: { Small: number; Medium: number; Large: number };
+  quoted_price: number;
+  first_assembly_price: number;
+  dup_assembly_price: number;
+  is_current: boolean;
+}
+
+export interface ProjectEdit {
+  id: number;
+  project_id: number;
+  created_at: string;
+  user_email: string | null;
+  user_name: string | null;
+  summary: string | null;
+}
+
 export interface QuoteResult {
   total_cost: number;
   quoted_price: number;

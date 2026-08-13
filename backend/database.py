@@ -116,6 +116,17 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_snapshots_project ON quote_snapshots(project_id);
 
+    -- Audit log of INPUT changes to a project/quote (who + when). Excludes app/pricing updates.
+    CREATE TABLE IF NOT EXISTS project_edits (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        created_at  TEXT    DEFAULT (datetime('now')),
+        user_email  TEXT,
+        user_name   TEXT,
+        summary     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_edits_project ON project_edits(project_id);
+
     -- People who have accessed the app (identity comes from Entra sign-in).
     CREATE TABLE IF NOT EXISTS users (
         email                TEXT PRIMARY KEY,
