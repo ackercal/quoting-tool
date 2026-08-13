@@ -148,11 +148,9 @@ export interface Snapshot {
 }
 
 export interface PriceHistoryRow {
+  version: string;          // the release that introduced this pricing (e.g. "v1.8.5")
   effective: string | null; // when this pricing became live; null = earliest/original
-  rates: { Small: number; Medium: number; Large: number };
   quoted_price: number;
-  first_assembly_price: number;
-  dup_assembly_price: number;
   is_current: boolean;
 }
 

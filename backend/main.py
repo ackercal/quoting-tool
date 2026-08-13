@@ -9,7 +9,8 @@ import os
 
 from database import get_conn, init_db, ADMIN_EMAIL, ADMIN_NAME
 import calculations as _calc
-from pricing_history import rates_as_of, RATE_EPOCHS
+from pricing_history import PRICING_VERSIONS, version_as_of
+import legacy_pricing as _legacy
 from calculations import (
     calc_project_quote,
     ProjectInputs,
@@ -675,10 +676,37 @@ def _log_edit(pid: int, user: dict, summary: str) -> None:
         print(f"[log_edit] project {pid} failed: {e}")
 
 
+def _apply_pricing(rates: dict, labor_era: str):
+    """Temporarily patch the calc module's pricing constants (rates + labor/part tables) to a
+    historical set. Returns a restore() callable. Robot-improvement / trial / project-hours and
+    the labor roles were unchanged across versions, so only rates + labor/part tables are swapped."""
+    saved = {n: getattr(_calc, n) for n in (
+        "HOURLY_RATES", "LABOR_HOURS_FORMED_PARTS", "LABOR_HOURS_CUSTOM_AUTO",
+        "PART_HOURS_FORMED_PARTS", "PART_HOURS_CUSTOM_AUTO", "LABOR_HOURS_SETS", "PART_HOURS_SETS")}
+
+    patched_rates = dict(saved["HOURLY_RATES"])
+    for k in ("Small", "Medium", "Large"):
+        patched_rates[k] = {2026: rates[k], 2028: rates[k], 2030: rates[k]}
+    _calc.HOURLY_RATES = patched_rates
+
+    if labor_era == "legacy":
+        _calc.LABOR_HOURS_FORMED_PARTS = _legacy.OLD_LABOR_FORMED_PARTS
+        _calc.LABOR_HOURS_CUSTOM_AUTO  = _legacy.OLD_LABOR_CUSTOM_AUTO
+        _calc.PART_HOURS_FORMED_PARTS  = _legacy.OLD_PART_HOURS_FORMED
+        _calc.PART_HOURS_CUSTOM_AUTO   = _legacy.OLD_PART_HOURS_CUSTOM
+        _calc.LABOR_HOURS_SETS = {"formed_parts": _legacy.OLD_LABOR_FORMED_PARTS, "custom_auto": _legacy.OLD_LABOR_CUSTOM_AUTO}
+        _calc.PART_HOURS_SETS  = {"formed_parts": _legacy.OLD_PART_HOURS_FORMED, "custom_auto": _legacy.OLD_PART_HOURS_CUSTOM}
+
+    def restore():
+        for n, v in saved.items():
+            setattr(_calc, n, v)
+    return restore
+
+
 @app.get("/projects/{pid}/price-history")
 def price_history(pid: int, user: dict = Depends(current_user)):
-    """For the project's CURRENT inputs, what the quote would price at under each past
-    pricing version — so you can see how pricing updates moved this quote's number."""
+    """For the project's CURRENT inputs, what the quote would price at under each past pricing
+    version (full pricing: rates + labor assumptions) — showing how updates moved this quote."""
     conn = get_conn()
     p, parts_data = _load_project_and_parts(conn, pid)
     conn.close()
@@ -687,26 +715,20 @@ def price_history(pid: int, user: dict = Depends(current_user)):
     if not _can_see(p, user):
         raise HTTPException(403, "You don't have access to this project")
 
-    live = {k: _calc.HOURLY_RATES[k][2026] for k in ("Small", "Medium", "Large")}
-    orig = _calc.HOURLY_RATES
+    live_ver = PRICING_VERSIONS[0][0]
     out = []
-    try:
-        for eff, rates in RATE_EPOCHS:
-            patched = dict(orig)
-            for k in ("Small", "Medium", "Large"):
-                patched[k] = {2026: rates[k], 2028: rates[k], 2030: rates[k]}
-            _calc.HOURLY_RATES = patched
+    for version, eff, rates, era in PRICING_VERSIONS:
+        restore = _apply_pricing(rates, era)
+        try:
             res = compute_quote_result(p, parts_data)
-            out.append({
-                "effective":            None if eff.startswith("0000") else eff,
-                "rates":                rates,
-                "quoted_price":         res["quoted_price"],
-                "first_assembly_price": res["first_assembly_price"],
-                "dup_assembly_price":   res["dup_assembly_price"],
-                "is_current":           all(abs(rates[k] - live[k]) < 1e-9 for k in ("Small", "Medium", "Large")),
-            })
-    finally:
-        _calc.HOURLY_RATES = orig
+        finally:
+            restore()
+        out.append({
+            "version":              version,
+            "effective":            eff,
+            "quoted_price":         res["quoted_price"],
+            "is_current":           version == live_ver,
+        })
     return out
 
 
@@ -729,39 +751,37 @@ def list_edits(pid: int, user: dict = Depends(current_user)):
 
 
 def backfill_reconstructed_baselines() -> None:
-    """One-time: give every existing project a reconstructed baseline snapshot priced at the
-    robot rates that were live when it was last edited. Runs once (guarded by user_version>=2),
-    only for projects that don't already have a snapshot."""
+    """One-time: give every existing project a reconstructed baseline priced at the FULL pricing
+    (rates + labor assumptions) that was live when it was last edited. Runs once (user_version>=3);
+    only creates/replaces auto-reconstructed baselines — never touches a user-created/refreshed one."""
     conn = get_conn()
     try:
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        if ver >= 2:
+        if ver >= 3:
             return
         proj_ids = [r[0] for r in conn.execute("SELECT id FROM projects").fetchall()]
         for pid in proj_ids:
-            has = conn.execute("SELECT 1 FROM quote_snapshots WHERE project_id=? LIMIT 1", (pid,)).fetchone()
-            if has:
-                continue
+            active = conn.execute(
+                "SELECT is_reconstructed FROM quote_snapshots WHERE project_id=? AND is_active=1", (pid,)
+            ).fetchone()
+            if active is not None and not active["is_reconstructed"]:
+                continue  # a real (edited/refreshed) baseline exists — leave it alone
             p, parts_data = _load_project_and_parts(conn, pid)
             if not p:
                 continue
-            rates = rates_as_of(p.get("updated_at"))
-            orig = _calc.HOURLY_RATES
-            patched = dict(orig)
-            for k in ("Small", "Medium", "Large"):
-                patched[k] = {2026: rates[k], 2028: rates[k], 2030: rates[k]}
-            _calc.HOURLY_RATES = patched
+            version, _eff, rates, era = version_as_of(p.get("updated_at"))
+            restore = _apply_pricing(rates, era)
             try:
                 result = compute_quote_result(p, parts_data)
-                label = (f"Reconstructed baseline — robots "
-                         f"${rates['Small']:.2f}/${rates['Medium']:.2f}/${rates['Large']:.2f}")
+                conn.execute("DELETE FROM quote_snapshots WHERE project_id=? AND is_reconstructed=1", (pid,))
                 _create_snapshot(conn, pid, result, {"project": p, "parts": parts_data},
-                                 label=label, make_active=True, reconstructed=True)
+                                 label=f"Reconstructed baseline (pricing {version})",
+                                 make_active=True, reconstructed=True)
             except Exception as e:
                 print(f"[backfill] project {pid} failed: {e}")
             finally:
-                _calc.HOURLY_RATES = orig
-        conn.execute("PRAGMA user_version = 2")
+                restore()
+        conn.execute("PRAGMA user_version = 3")
         conn.commit()
     finally:
         conn.close()

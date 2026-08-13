@@ -692,26 +692,24 @@ export default function QuoteView({ projectId }: Props) {
         )
       })()}
 
-      {/* ── Price History (across pricing updates) ── */}
+      {/* ── App Update History (this quote's price under each pricing version) ── */}
       <div className="quote-section" style={{ marginTop: 24 }}>
         <div className="quote-section-header">
-          <span className="quote-section-title">Price History</span>
+          <span className="quote-section-title">App Update History</span>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--gray-500)', padding: '0 0 10px', lineHeight: 1.6 }}>
-          With this project's <strong>current inputs</strong>, what this quote would price at under each past pricing update
-          (robot-rate changes) — showing how pricing updates have moved this quote. This is <em>not</em> a log of input changes
-          (see Change History below).
+        <div style={{ fontSize: 12, color: 'var(--gray-500)', padding: '12px 16px 14px', lineHeight: 1.6 }}>
+          With this project's <strong>current inputs</strong>, what this quote would price at under each past app update
+          that changed pricing. See the Release Notes to read what each version changed.
         </div>
         {priceHistory === null ? (
-          <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 0' }}>Loading…</div>
+          <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 16px' }}>Loading…</div>
         ) : (() => {
           const current = priceHistory.find(r => r.is_current)?.quoted_price ?? priceHistory[0]?.quoted_price ?? 0
           return (
             <table className="quote-table">
               <thead>
                 <tr>
-                  <th>Pricing in effect</th>
-                  <th>Robot rates (S / M / L)</th>
+                  <th>Version</th>
                   <th className="right">Total Price</th>
                   <th className="right">vs current</th>
                 </tr>
@@ -722,11 +720,8 @@ export default function QuoteView({ projectId }: Props) {
                   return (
                     <tr key={i} style={{ background: r.is_current ? 'var(--gray-100)' : undefined }}>
                       <td style={{ whiteSpace: 'nowrap', fontWeight: r.is_current ? 600 : 400 }}>
-                        {r.is_current ? 'Current' : r.effective ? fmtWhen(r.effective) : 'Original'}
-                        {r.is_current && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--orange, #FF9900)', marginLeft: 8 }}>now</span>}
-                      </td>
-                      <td style={{ color: 'var(--gray-500)', fontSize: 12 }}>
-                        ${r.rates.Small.toFixed(2)} / ${r.rates.Medium.toFixed(2)} / ${r.rates.Large.toFixed(2)}
+                        {r.version}
+                        {r.is_current && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--orange, #FF9900)', marginLeft: 8 }}>current</span>}
                       </td>
                       <td className="right" style={{ fontWeight: 600 }}>{$(r.quoted_price)}</td>
                       <td className="right" style={{ fontSize: 12, color: r.is_current ? 'var(--gray-400)' : (delta > 0 ? '#c0392b' : '#1e7e34') }}>
@@ -741,18 +736,18 @@ export default function QuoteView({ projectId }: Props) {
         })()}
       </div>
 
-      {/* ── Change History (who edited the inputs, and when) ── */}
+      {/* ── User Change History (who edited the inputs, and when) ── */}
       <div className="quote-section" style={{ marginTop: 24 }}>
         <div className="quote-section-header">
-          <span className="quote-section-title">Change History</span>
+          <span className="quote-section-title">User Change History</span>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--gray-500)', padding: '0 0 10px', lineHeight: 1.6 }}>
-          Who changed this quote's inputs, and when. (Pricing/app updates are not shown here — see Price History above.)
+        <div style={{ fontSize: 12, color: 'var(--gray-500)', padding: '12px 16px 14px', lineHeight: 1.6 }}>
+          Who changed this quote's inputs, and when. (App/pricing updates are not shown here — see App Update History above.)
         </div>
         {edits === null ? (
-          <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 0' }}>Loading…</div>
+          <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 16px' }}>Loading…</div>
         ) : edits.length === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 0' }}>No input changes recorded yet.</div>
+          <div style={{ fontSize: 13, color: 'var(--gray-500)', padding: '6px 16px' }}>No input changes recorded yet.</div>
         ) : (
           <table className="quote-table">
             <thead>
