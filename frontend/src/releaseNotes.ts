@@ -35,8 +35,9 @@ export const RELEASES: Release[] = [
     changes: [
       { type: 'added', text: 'Quotes are now frozen at the pricing in effect when they were saved — a rate/labor update no longer changes existing quotes.' },
       { type: 'added', text: 'A quote using older pricing shows a flag with the old-vs-current comparison and a “Refresh to current pricing” button.' },
-      { type: 'added', text: 'New “Price History” section (under Project Schedule) shows how a quote’s price changed across pricing updates — not every input edit.' },
-      { type: 'added', text: 'Existing projects were given a reconstructed baseline priced at the robot rates that were live when each was last edited.' },
+      { type: 'added', text: 'New “App Update History” section (under Project Schedule): for the current inputs, what the quote would price at under each past app version — with version, date, total price, and change-vs-current.' },
+      { type: 'added', text: 'New “User Change History” section: who changed the quote’s inputs and when.' },
+      { type: 'added', text: 'Existing projects were given a reconstructed baseline priced at the pricing (rates + labor assumptions) that was live when each was last edited.' },
       { type: 'changed', text: 'Home cards flag projects that are on outdated pricing.' },
     ],
   },
