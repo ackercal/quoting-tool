@@ -6,4 +6,6 @@ backend/*.db
 backend/*.pyc
 backend/*.log
 backend/*.xlsx
+backend/sf_config.local.json
+backend/sf_cache.json
 *.pyc

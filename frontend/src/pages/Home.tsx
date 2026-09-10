@@ -5,8 +5,9 @@ import type { Project, Constant, AppUser } from '../types'
 import { RELEASES, CURRENT_VERSION, type ChangeType } from '../releaseNotes'
 import { useUser } from '../user'
 import OwnerPicker from '../components/OwnerPicker'
+import ProjectCodeTab from '../components/ProjectCodeTab'
 
-type Section = 'projects' | 'devtools' | 'readme' | 'helpers' | 'releases' | 'admin'
+type Section = 'projects' | 'devtools' | 'readme' | 'helpers' | 'projectcode' | 'releases' | 'admin'
 
 const YEARS = [2026, 2028, 2030]
 
@@ -231,12 +232,24 @@ function HTCostCalculator() {
   )
 }
 
+const QUOTE_STATUSES = ['Open', 'Closed Won', 'Not Used'] as const
+
+function quoteStatusPill(status: string): React.CSSProperties {
+  const colors: Record<string, [string, string]> = {
+    'Open':       ['rgba(255,153,0,0.12)', '#b46b00'],
+    'Closed Won': ['#e6f4ea', '#256a3a'],
+    'Not Used':   ['var(--gray-100)', 'var(--gray-500)'],
+  }
+  const [bg, fg] = colors[status] || ['var(--gray-100)', 'var(--gray-500)']
+  return { fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: fg, background: bg, borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }
+}
+
 export default function Home() {
-  type Filter = 'all' | 'active' | 'inactive'
+  type Filter = 'all' | 'Open' | 'Closed Won' | 'Not Used'
   const location = useLocation()
   const initialSection = (): Section => {
     const s = new URLSearchParams(location.search).get('section')
-    if (s === 'helpers' || s === 'devtools' || s === 'readme' || s === 'releases' || s === 'admin') return s
+    if (s === 'helpers' || s === 'devtools' || s === 'readme' || s === 'projectcode' || s === 'releases' || s === 'admin') return s
     return 'projects'
   }
   const [section, setSection]   = useState<Section>(initialSection)
@@ -257,7 +270,13 @@ export default function Home() {
   const [duplicating, setDuplicating] = useState<number | null>(null)
   const [deleting, setDeleting]     = useState<number | null>(null)
   const [ownerEdit, setOwnerEdit]   = useState<Project | null>(null)
-  const [filter, setFilter]         = useState<Filter>('active')
+  const [filter, setFilter]         = useState<Filter>('all')
+  // Field-scoped filter menu (combinable).
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [fName, setFName]       = useState('')
+  const [fCode, setFCode]       = useState('')
+  const [fAccount, setFAccount] = useState('')
+  const [fCreator, setFCreator] = useState('')
   const { me, isAdmin, adminMode, setAdminMode, acknowledgeVersion, logout } = useUser()
   const [profileOpen, setProfileOpen] = useState(false)
   const [users, setUsers] = useState<AppUser[] | null>(null)
@@ -352,6 +371,15 @@ export default function Home() {
               <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
             </svg>
             Projects
+          </div>
+          <div
+            className={`sidebar-item${section === 'projectcode' ? ' active' : ''}`}
+            onClick={() => setSection('projectcode')}
+          >
+            <svg className="sidebar-item-icon" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 8l-3 2 3 2m6-4l3 2-3 2M11 5l-2 10" />
+            </svg>
+            Project Code
           </div>
           <div
             className={`sidebar-item${section === 'devtools' ? ' active' : ''}`}
@@ -535,9 +563,9 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Filter tabs */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
-              {(['active', 'inactive', 'all'] as Filter[]).map(f => (
+            {/* Status tabs + field filter menu */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              {(['all', 'Open', 'Closed Won', 'Not Used'] as Filter[]).map(f => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
@@ -549,18 +577,59 @@ export default function Home() {
                     color: filter === f ? '#fff' : 'var(--gray-600)',
                   }}
                 >
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                  {f === 'all' ? 'All' : f}
                 </button>
               ))}
+              {(() => {
+                const active = [fName, fCode, fAccount, fCreator].filter(v => v.trim()).length
+                return (
+                  <button onClick={() => setFiltersOpen(o => !o)} style={{
+                    marginLeft: 'auto', padding: '6px 14px', borderRadius: 6, border: '1px solid',
+                    fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                    borderColor: active || filtersOpen ? 'var(--orange)' : 'var(--gray-200)',
+                    background: active ? 'rgba(255,153,0,0.10)' : 'var(--white)', color: 'var(--gray-700)',
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 5h14M6 10h8M9 15h2" strokeLinecap="round" /></svg>
+                    Filters{active ? ` (${active})` : ''}
+                  </button>
+                )
+              })()}
             </div>
+
+            {filtersOpen && (
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '14px 16px', border: '1px solid var(--gray-200)', borderRadius: 10, marginBottom: 16, background: 'var(--gray-50, #f9f9f9)' }}>
+                {([
+                  ['Quote name', fName, setFName],
+                  ['Project code', fCode, setFCode],
+                  ['Account name', fAccount, setFAccount],
+                  ['Created by', fCreator, setFCreator],
+                ] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
+                  <div key={label} style={{ flex: '1 1 160px', minWidth: 140 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{label}</div>
+                    <input value={val} onChange={e => setter(e.target.value)} placeholder={`Filter by ${label.toLowerCase()}…`}
+                      style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--gray-300)', borderRadius: 6, padding: '7px 9px', fontSize: 13, outline: 'none' }} />
+                  </div>
+                ))}
+                {[fName, fCode, fAccount, fCreator].some(v => v.trim()) && (
+                  <button onClick={() => { setFName(''); setFCode(''); setFAccount(''); setFCreator('') }}
+                    style={{ alignSelf: 'flex-end', fontSize: 12, fontWeight: 600, color: 'var(--orange, #d97800)', background: 'none', border: 'none', cursor: 'pointer', padding: '7px 4px' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
 
             {loading && <div className="loading">Loading…</div>}
 
             {!loading && (() => {
+              const has = (field: string | null | undefined, q: string) =>
+                !q.trim() || (field || '').toLowerCase().includes(q.trim().toLowerCase())
               const visible = projects.filter(p =>
-                filter === 'all' ? true :
-                filter === 'active' ? p.is_active !== 0 :
-                p.is_active === 0
+                (filter === 'all' || p.quote_status === filter) &&
+                has(p.name, fName) &&
+                has(p.project_code, fCode) &&
+                has(p.code_customer, fAccount) &&
+                has(p.author_name, fCreator)
               )
               if (visible.length === 0) return (
                 <div className="empty-state">
@@ -574,11 +643,16 @@ export default function Home() {
                   {visible.map(p => (
                     <div key={p.id} className="project-card" onClick={() => navigate(`/projects/${p.id}`)}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
-                        <div className="project-card-name" style={{ marginBottom: 0 }}>{p.name}</div>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                          {p.is_active === 0 && (
-                            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray-400)', background: 'var(--gray-100)', borderRadius: 4, padding: '2px 6px' }}>Inactive</div>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="project-card-name" style={{ marginBottom: 0 }}>{p.name}</div>
+                          {(p.code_customer || p.code_project_name) && (
+                            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {[p.code_customer, p.code_project_name].filter(Boolean).join(' : ')}
+                            </div>
                           )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                          <div style={quoteStatusPill(p.quote_status || 'Open')}>{p.quote_status || 'Open'}</div>
                           <div style={{ position: 'relative' }}>
                             <button
                               onClick={e => { e.stopPropagation(); setOpenMenu(openMenu === p.id ? null : p.id) }}
@@ -1064,6 +1138,8 @@ export default function Home() {
             <HTCostCalculator />
           </div>
         )}
+
+        {section === 'projectcode' && <ProjectCodeTab />}
       </div>
 
       {showNew && (

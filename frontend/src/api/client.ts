@@ -69,4 +69,71 @@ export const api = {
       method: 'PUT', body: JSON.stringify({ access_scope }),
     }),
   listAccessTags: () => req<string[]>('/admin/access-tags'),
+
+  // Salesforce lists (temporary — Project Code tab)
+  getSalesforceOptions: (refresh = false) =>
+    req<SalesforceOptions>(`/salesforce/options${refresh ? '?refresh=true' : ''}`),
+
+  // Project codes
+  listProjectCodes: (params: { status?: string; q?: string; show_all?: boolean; open?: boolean } = {}) => {
+    const qs = new URLSearchParams()
+    if (params.status) qs.set('status', params.status)
+    if (params.q) qs.set('q', params.q)
+    if (params.show_all) qs.set('show_all', 'true')
+    if (params.open) qs.set('open', 'true')
+    const s = qs.toString()
+    return req<ProjectCodeList>(`/project-codes${s ? `?${s}` : ''}`)
+  },
+  previewProjectCode: (body: { work_type: string; team?: string; customer?: string }) =>
+    req<{ code: string; prefix: string }>('/project-codes/preview', { method: 'POST', body: JSON.stringify(body) }),
+  createProjectCode: (body: {
+    work_type: string; team?: string; customer?: string; project_name?: string
+    sf_account_id?: string; sf_opp_id?: string
+  }) => req<ProjectCode & { existing?: boolean }>('/project-codes', { method: 'POST', body: JSON.stringify(body) }),
+  updateProjectCode: (id: number, patch: { status?: string; customer?: string; project_name?: string }) =>
+    req<ProjectCode>(`/project-codes/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  getProjectCodeHistory: (id: number) => req<ProjectCodeEvent[]>(`/project-codes/${id}/history`),
+  seedProjectCodes: () => req<{ inserted: number; total: number }>('/project-codes/seed', { method: 'POST' }),
 };
+
+export interface SalesforceAccount { id: string; name: string }
+export interface SalesforceOpportunity {
+  id: string; name: string; account_id: string | null; stage: string | null
+  is_closed: boolean; is_won: boolean; amount: number | null; close_date: string | null
+}
+export interface SalesforceOptions {
+  accounts: SalesforceAccount[]
+  opportunities: SalesforceOpportunity[]
+  fetched_at: number
+  stale: boolean
+  error?: string
+  sf_instance_url?: string | null
+  code_by_opp?: Record<string, string>
+}
+
+export interface ProjectCode {
+  id: number; code: string; work_type: string; team: string | null
+  customer: string | null; project_name: string | null; status: string
+  sf_account_id: string | null; sf_opp_id: string | null; source: string
+  created_by: string | null; created_by_name: string | null
+  created_at: string | null; status_updated_at: string | null
+  sf_account_index: number | null; sf_opp_index: number | null
+}
+export interface ProjectCodeList { codes: ProjectCode[]; seeded: boolean; statuses: string[] }
+export interface ProjectCodeEvent {
+  id: number; code_id: number; field: string; old_value: string | null; new_value: string | null
+  changed_by: string | null; changed_by_name: string | null; changed_at: string
+}
+
+export interface SalesforceAccount { id: string; name: string }
+export interface SalesforceOpportunity {
+  id: string; name: string; account_id: string | null; stage: string | null
+  is_closed: boolean; is_won: boolean
+}
+export interface SalesforceOptions {
+  accounts: SalesforceAccount[]
+  opportunities: SalesforceOpportunity[]
+  fetched_at: number
+  stale: boolean
+  error?: string
+}

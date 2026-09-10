@@ -28,6 +28,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.10.0',
+    date: '2026-09-10',
+    title: 'Project Codes',
+    summary: 'A project-code system for tagging quotes to customer or internal work.',
+    changes: [
+      { type: 'added', text: 'New “Project Code” tab (under Projects): generate a unique code for customer work — pick a Salesforce account + opportunity — or internal Machina work — pick a team. Codes are created manually, on demand: one per account + opportunity.' },
+      { type: 'added', text: 'Project Code List with per-code status (Discovery / Completed / Closed Won / Closed Lost for customer; Internal / Completed for internal), field filters (account, opportunity, code, creator), an editable status/customer/project with full change history, and a reference Salesforce list showing which opportunities already have a code.' },
+      { type: 'added', text: 'Quotes can be linked to a Project Code (optional): pick a code and the account + project name fill in automatically. The old “Project Name” field is now the “Quote Name”.' },
+      { type: 'added', text: 'Per-quote status — Open / Closed Won / Not Used — shown as a pill on the home screen, with matching filters plus a field-based filter menu (quote name, code, account, creator).' },
+      { type: 'changed', text: 'Codes are seeded once from the existing Salesforce/Databricks list, then maintained independently in the tool — new codes come only from here; the old list is no longer read.' },
+    ],
+  },
+  {
     version: '1.9.0',
     date: '2026-08-13',
     title: 'Quotes freeze — with price history',

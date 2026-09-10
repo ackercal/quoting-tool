@@ -42,6 +42,10 @@ def init_db():
         author_email            TEXT,
         author_name             TEXT,
         access_tag              TEXT    NOT NULL DEFAULT 'all',
+        -- linked project code (from the Project Code tab); the quote's own name is `name`
+        project_code            TEXT,
+        -- per-quote status: 'Open' | 'Closed Won' | 'Not Used' (upgrades is_active)
+        quote_status            TEXT    NOT NULL DEFAULT 'Open',
         created_at              TEXT    DEFAULT (datetime('now')),
         updated_at              TEXT    DEFAULT (datetime('now'))
     );
@@ -140,7 +144,69 @@ def init_db():
         last_seen            TEXT    DEFAULT (datetime('now')),
         access_count         INTEGER NOT NULL DEFAULT 0
     );
+
+    -- Project codes (customer / internal), with status tracking. Seeded from the
+    -- current Salesforce dataset (etl.sf_opportunities) as a uniqueness baseline.
+    -- New codes: <PREFIX><NNN>, prefix from the ported Databricks letter logic,
+    -- NNN a per-prefix counter (no letter-swap collisions). sf_account_index /
+    -- sf_opp_index are carried at the far right of the table.
+    CREATE TABLE IF NOT EXISTS project_codes (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        code              TEXT    NOT NULL UNIQUE,
+        work_type         TEXT    NOT NULL DEFAULT 'customer',  -- 'customer' | 'internal'
+        team              TEXT,                                 -- internal team, when internal
+        customer          TEXT,                                 -- account name (customer)
+        project_name      TEXT,                                 -- opportunity name
+        status            TEXT    NOT NULL DEFAULT 'Discovery', -- Discovery | Closed Won | Closed Lost
+        sf_account_id     TEXT,
+        sf_opp_id         TEXT,
+        source            TEXT    NOT NULL DEFAULT 'generated', -- 'generated' | 'seed'
+        created_by        TEXT,
+        created_by_name   TEXT,
+        created_at        TEXT    DEFAULT (datetime('now')),
+        status_updated_at TEXT    DEFAULT (datetime('now')),
+        -- carried from Databricks, kept at the far right per request
+        sf_account_index  INTEGER,
+        sf_opp_index      INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_codes_status ON project_codes(status);
+
+    -- Change history for a project code (who changed which field, when, old->new).
+    -- `field` is 'status' | 'customer' | 'project_name'. The code itself is never edited.
+    CREATE TABLE IF NOT EXISTS project_code_status_events (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        code_id         INTEGER NOT NULL REFERENCES project_codes(id) ON DELETE CASCADE,
+        field           TEXT    NOT NULL DEFAULT 'status',
+        old_value       TEXT,
+        new_value       TEXT,
+        changed_by      TEXT,
+        changed_by_name TEXT,
+        changed_at      TEXT    DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_code_events_code ON project_code_status_events(code_id);
     """)
+
+    # If an older status-only history table exists (from_status/to_status), rebuild
+    # it to the generic field/old_value/new_value schema. Guarded by column presence.
+    _pcse_cols = [r[1] for r in c.execute("PRAGMA table_info(project_code_status_events)").fetchall()]
+    if _pcse_cols and 'field' not in _pcse_cols:
+        c.executescript("""
+            ALTER TABLE project_code_status_events RENAME TO _pcse_old;
+            CREATE TABLE project_code_status_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                code_id         INTEGER NOT NULL REFERENCES project_codes(id) ON DELETE CASCADE,
+                field           TEXT    NOT NULL DEFAULT 'status',
+                old_value       TEXT,
+                new_value       TEXT,
+                changed_by      TEXT,
+                changed_by_name TEXT,
+                changed_at      TEXT    DEFAULT (datetime('now'))
+            );
+            INSERT INTO project_code_status_events (id, code_id, field, old_value, new_value, changed_by, changed_by_name, changed_at)
+                SELECT id, code_id, 'status', from_status, to_status, changed_by, changed_by_name, changed_at FROM _pcse_old;
+            DROP TABLE _pcse_old;
+            CREATE INDEX IF NOT EXISTS idx_code_events_code ON project_code_status_events(code_id);
+        """)
 
     # Migrate existing DBs
     for migration in [
@@ -165,11 +231,24 @@ def init_db():
         f"UPDATE projects SET author_email='{ADMIN_EMAIL}' WHERE author_email IS NULL",
         f"UPDATE projects SET author_name='{ADMIN_NAME}' WHERE author_name IS NULL",
         "UPDATE projects SET access_tag='all' WHERE access_tag IS NULL OR access_tag=''",
+        # Linked project code (v1.10)
+        "ALTER TABLE projects ADD COLUMN project_code TEXT",
+        # Internal project codes: the customer is "Machina <Team>" so it reads as internal.
+        "UPDATE project_codes SET customer='Machina ' || team WHERE work_type='internal' AND team IS NOT NULL AND (customer IS NULL OR customer NOT LIKE 'Machina %')",
+        # Internal codes now have only Internal / Completed: fold any other status to Internal.
+        "UPDATE project_codes SET status='Internal' WHERE work_type='internal' AND status<>'Completed'",
+        # Per-quote status (upgrades is_active): add column, map inactive -> Not Used.
+        "ALTER TABLE projects ADD COLUMN quote_status TEXT NOT NULL DEFAULT 'Open'",
+        "UPDATE projects SET quote_status='Not Used' WHERE is_active=0 AND quote_status='Open'",
     ]:
         try:
             c.execute(migration)
         except Exception:
             pass
+
+    # Reformat old-style internal codes (M_Product001) to the tight form (MPROD001).
+    # Idempotent: after it runs, no code starts with 'M_' so it is a no-op.
+    _reformat_internal_codes(c)
 
     # One-time: spread projection years for existing projects (2027->2028, 2028->2030).
     # Guarded by user_version so it runs exactly once (order matters to avoid double-shift).
@@ -183,6 +262,41 @@ def init_db():
     _seed_admin(c)
     conn.commit()
     conn.close()
+
+
+def _reformat_internal_codes(c):
+    """Rename legacy internal codes (M_<Team><n>) to the compact form (M+PREFIX+n).
+    Updates the code, any project linked to it, and logs a 'code' history event."""
+    import re
+    import code_gen
+    try:
+        rows = c.execute("SELECT id, code, team FROM project_codes WHERE work_type='internal'").fetchall()
+    except Exception:
+        return  # project_codes table not present yet
+    old = [(r[0], r[1], r[2]) for r in rows if r[1] and r[1].startswith("M_")]
+    if not old:
+        return
+    existing = {r[0] for r in c.execute("SELECT code FROM project_codes").fetchall()}
+
+    def suffix_num(code):
+        m = re.search(r"(\d+)$", code)
+        return int(m.group(1)) if m else 0
+
+    # Stable order: by team, then original number, so sequences stay sensible.
+    for cid, oldcode, team in sorted(old, key=lambda r: ((r[2] or ""), suffix_num(r[1]))):
+        t = team
+        if not t:
+            m = re.match(r"^M_(.*?)\d*$", oldcode)
+            t = (m.group(1) if m else "Other") or "Other"
+        newcode = code_gen.next_code(code_gen.internal_prefix(t), existing)
+        existing.add(newcode)
+        c.execute("UPDATE project_codes SET code=? WHERE id=?", (newcode, cid))
+        c.execute("UPDATE projects SET project_code=? WHERE project_code=?", (newcode, oldcode))
+        c.execute(
+            """INSERT INTO project_code_status_events (code_id, field, old_value, new_value, changed_by, changed_by_name)
+               VALUES (?, 'code', ?, ?, ?, ?)""",
+            (cid, oldcode, newcode, ADMIN_EMAIL, ADMIN_NAME),
+        )
 
 
 # The designated admin. Everyone else defaults to a normal user with 'all' access.

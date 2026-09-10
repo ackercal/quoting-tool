@@ -169,11 +169,14 @@ class ProjectCreate(BaseModel):
     labor_constants: str = "formed_parts"
     internal_notes: Optional[str] = None
     is_active: int = 1
+    quote_status: str = "Open"  # 'Open' | 'Closed Won' | 'Not Used'
     # authorship & visibility (author is set from identity on create;
     # author/access_tag are editable by an admin on update)
     author_email: Optional[str] = None
     author_name: Optional[str] = None
     access_tag: str = "all"
+    # linked project code (from the Project Code tab)
+    project_code: Optional[str] = None
 
 
 class ProjectUpdate(ProjectCreate):
@@ -242,12 +245,21 @@ def list_projects(user: dict = Depends(current_user)):
     conn = get_conn()
     rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
 
+    # Map each linked project code -> (customer, project name) it supports.
+    code_map = {
+        r["code"]: (r["customer"], r["project_name"])
+        for r in conn.execute("SELECT code, customer, project_name FROM project_codes").fetchall()
+    }
+
     cur_ver = pricing_version()
     result = []
     for row in rows:
         if not _can_see(row, user):
             continue
         proj = row_to_dict(row)
+        cc = code_map.get(proj.get("project_code"))
+        proj["code_customer"] = cc[0] if cc else None
+        proj["code_project_name"] = cc[1] if cc else None
         proj["parts_count"] = conn.execute(
             "SELECT COUNT(*) FROM parts WHERE project_id=?", (proj["id"],)
         ).fetchone()[0]
@@ -286,14 +298,16 @@ def create_project(data: ProjectCreate, user: dict = Depends(current_user)):
            (name,quantity_of_assemblies,material_type,ht_type,internal_margin,
             year_of_execution,assembly_pp_internal,assembly_pp_external,
             assembly_first_part_setup,setup_splitting_hrs,shipping_cost,osp_margin,
-            labor_constants,internal_notes,is_active,author_email,author_name,access_tag)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            labor_constants,internal_notes,is_active,author_email,author_name,access_tag,project_code,quote_status)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
          data.internal_margin, data.year_of_execution, data.assembly_pp_internal,
          data.assembly_pp_external, data.assembly_first_part_setup,
          data.setup_splitting_hrs, data.shipping_cost, data.osp_margin,
-         data.labor_constants, data.internal_notes, data.is_active,
-         user["email"], user["display_name"], data.access_tag or "all"),
+         data.labor_constants, data.internal_notes,
+         0 if data.quote_status == "Not Used" else 1,
+         user["email"], user["display_name"], data.access_tag or "all", data.project_code,
+         data.quote_status or "Open"),
     )
     pid = c.lastrowid
     conn.commit()
@@ -350,15 +364,17 @@ def update_project(pid: int, data: ProjectUpdate, user: dict = Depends(current_u
            assembly_pp_external=?,assembly_first_part_setup=?,
            setup_splitting_hrs=?,shipping_cost=?,osp_margin=?,
            labor_constants=?,internal_notes=?,is_active=?,
-           author_email=?,author_name=?,access_tag=?,
+           author_email=?,author_name=?,access_tag=?,project_code=?,quote_status=?,
            updated_at=datetime('now')
            WHERE id=?""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
          data.internal_margin, data.year_of_execution, data.assembly_pp_internal,
          data.assembly_pp_external, data.assembly_first_part_setup,
          data.setup_splitting_hrs, data.shipping_cost, data.osp_margin,
-         data.labor_constants, data.internal_notes, data.is_active,
-         author_email, author_name, access_tag, pid),
+         data.labor_constants, data.internal_notes,
+         0 if data.quote_status == "Not Used" else 1,
+         author_email, author_name, access_tag, data.project_code,
+         data.quote_status or "Open", pid),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
@@ -910,6 +926,263 @@ def get_labor_sets():
         "robot_improvement": ROBOT_IMPROVEMENT,
         "trial_reduction":   TRIAL_REDUCTION,
     }
+
+
+@app.get("/salesforce/options")
+async def salesforce_options(refresh: bool = False):
+    """Salesforce Account + Opportunity lists (from Databricks), cached ~hourly.
+
+    Temporary feed for the Project Code tab. Returns {accounts, opportunities,
+    fetched_at, stale}. Never fails the whole request when a refresh errors —
+    falls back to the last cached lists (marked stale)."""
+    from fastapi.concurrency import run_in_threadpool
+    import salesforce_source as _sf
+    try:
+        data = await run_in_threadpool(_sf.get_options, refresh)
+    except _sf.SalesforceUnavailable as e:
+        raise HTTPException(503, str(e))
+    # Map each SF opportunity that already has a project code -> that code.
+    conn = get_conn()
+    try:
+        code_by_opp = {
+            r["sf_opp_id"]: r["code"]
+            for r in conn.execute("SELECT sf_opp_id, code FROM project_codes WHERE sf_opp_id IS NOT NULL").fetchall()
+        }
+    finally:
+        conn.close()
+    return {**data, "sf_instance_url": os.environ.get("SALESFORCE_INSTANCE_URL"), "code_by_opp": code_by_opp}
+
+
+# ── Project codes ─────────────────────────────────────────────────────────────
+
+import code_gen as _codegen
+
+PROJECT_CODE_STATUSES = ["Discovery", "Internal", "Completed", "Closed Won", "Closed Lost"]
+# "Open" = active/not-done: won deals, discovery, and internal work.
+OPEN_STATUSES = ("Discovery", "Closed Won", "Internal")
+
+
+def _seed_status(is_closed: bool, is_won: bool) -> str:
+    if is_closed:
+        return "Closed Won" if is_won else "Closed Lost"
+    return "Discovery"
+
+
+def _all_codes(conn) -> set:
+    return {r[0] for r in conn.execute("SELECT code FROM project_codes").fetchall()}
+
+
+def _compute_prefix(work_type: str, team: Optional[str], customer: Optional[str]) -> str:
+    if work_type == "internal":
+        return _codegen.internal_prefix(team or "Other")
+    return _codegen.customer_prefix(customer or "")
+
+
+class CodePreviewRequest(BaseModel):
+    work_type: str
+    team: Optional[str] = None
+    customer: Optional[str] = None
+
+
+class CodeCreateRequest(BaseModel):
+    work_type: str
+    team: Optional[str] = None
+    customer: Optional[str] = None
+    project_name: Optional[str] = None
+    sf_account_id: Optional[str] = None
+    sf_opp_id: Optional[str] = None
+
+
+class CodeEditRequest(BaseModel):
+    status: Optional[str] = None
+    customer: Optional[str] = None
+    project_name: Optional[str] = None
+
+
+@app.post("/project-codes/preview")
+def preview_project_code(body: CodePreviewRequest):
+    """Compute the next code for a selection without saving it."""
+    prefix = _compute_prefix(body.work_type, body.team, body.customer)
+    conn = get_conn()
+    try:
+        existing = _all_codes(conn)
+    finally:
+        conn.close()
+    return {"code": _codegen.next_code(prefix, existing), "prefix": prefix}
+
+
+@app.get("/project-codes")
+def list_project_codes(status: Optional[str] = None, q: Optional[str] = None, show_all: bool = False, open: bool = False):
+    conn = get_conn()
+    try:
+        seeded = conn.execute("SELECT COUNT(*) FROM project_codes").fetchone()[0] > 0
+        clauses, params = [], []
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        elif open:
+            # "Open" = Closed Won + Discovery + Internal.
+            clauses.append(f"status IN ({','.join('?' * len(OPEN_STATUSES))})")
+            params += list(OPEN_STATUSES)
+        # No status/open (or show_all) → return every code.
+        if q:
+            like = f"%{q}%"
+            clauses.append("(code LIKE ? OR customer LIKE ? OR project_name LIKE ?)")
+            params += [like, like, like]
+        sql = "SELECT * FROM project_codes"
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY status_updated_at DESC, id DESC"
+        rows = [row_to_dict(r) for r in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+    return {"codes": rows, "seeded": seeded, "statuses": PROJECT_CODE_STATUSES}
+
+
+@app.post("/project-codes")
+def create_project_code(body: CodeCreateRequest, user: dict = Depends(current_user)):
+    if body.work_type not in ("customer", "internal"):
+        raise HTTPException(400, "work_type must be 'customer' or 'internal'")
+    prefix = _compute_prefix(body.work_type, body.team, body.customer)
+    name = user.get("_name") or user["display_name"]
+    # Internal work has no customer — the "customer" is the internal team,
+    # labelled "Machina <Team>" so it reads clearly as internal.
+    customer = (f"Machina {body.team}" if body.team else "Machina") if body.work_type == "internal" else body.customer
+    # Internal work starts as "Internal"; customer work starts in "Discovery".
+    initial_status = "Internal" if body.work_type == "internal" else "Discovery"
+    conn = get_conn()
+    try:
+        # One project code per Salesforce account+opportunity: if this opportunity
+        # already has a code, return it instead of minting a new one.
+        if body.sf_opp_id:
+            dup = conn.execute("SELECT * FROM project_codes WHERE sf_opp_id=? LIMIT 1", (body.sf_opp_id,)).fetchone()
+            if dup:
+                return {**row_to_dict(dup), "existing": True}
+        code = _codegen.next_code(prefix, _all_codes(conn))
+        cur = conn.execute(
+            """INSERT INTO project_codes
+               (code, work_type, team, customer, project_name, status, sf_account_id, sf_opp_id,
+                source, created_by, created_by_name)
+               VALUES (?,?,?,?,?, ?, ?,?, 'generated', ?,?)""",
+            (code, body.work_type, body.team, customer, body.project_name, initial_status,
+             body.sf_account_id, body.sf_opp_id, user["email"], name),
+        )
+        code_id = cur.lastrowid
+        conn.execute(
+            """INSERT INTO project_code_status_events (code_id, field, old_value, new_value, changed_by, changed_by_name)
+               VALUES (?, 'status', NULL, ?, ?, ?)""",
+            (code_id, initial_status, user["email"], name),
+        )
+        conn.commit()
+        row = row_to_dict(conn.execute("SELECT * FROM project_codes WHERE id=?", (code_id,)).fetchone())
+    finally:
+        conn.close()
+    return {**row, "existing": False}
+
+
+@app.patch("/project-codes/{code_id}")
+def edit_project_code(code_id: int, body: CodeEditRequest, user: dict = Depends(current_user)):
+    """Edit a code's status / customer / project name. Each changed field is
+    recorded in the history. The code itself is never changed."""
+    name = user.get("_name") or user["display_name"]
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM project_codes WHERE id=?", (code_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Project code not found")
+
+        # (field, column, old, new) for each actual change. Columns are a fixed
+        # whitelist — `code` is never among them.
+        changes: list[tuple[str, str, object, object]] = []
+        if body.status is not None and body.status != row["status"]:
+            if body.status not in PROJECT_CODE_STATUSES:
+                raise HTTPException(400, f"status must be one of {PROJECT_CODE_STATUSES}")
+            changes.append(("status", "status", row["status"], body.status))
+        if body.customer is not None:
+            new_c = body.customer.strip() or None
+            if (new_c or None) != (row["customer"] or None):
+                changes.append(("customer", "customer", row["customer"], new_c))
+        if body.project_name is not None:
+            new_p = body.project_name.strip() or None
+            if (new_p or None) != (row["project_name"] or None):
+                changes.append(("project_name", "project_name", row["project_name"], new_p))
+
+        for field, col, old, new in changes:
+            conn.execute(f"UPDATE project_codes SET {col}=? WHERE id=?", (new, code_id))
+            conn.execute(
+                """INSERT INTO project_code_status_events (code_id, field, old_value, new_value, changed_by, changed_by_name)
+                   VALUES (?,?,?,?,?,?)""",
+                (code_id, field, old, new, user["email"], name),
+            )
+        if any(f == "status" for f, _, _, _ in changes):
+            conn.execute("UPDATE project_codes SET status_updated_at=datetime('now') WHERE id=?", (code_id,))
+        if changes:
+            conn.commit()
+        updated = row_to_dict(conn.execute("SELECT * FROM project_codes WHERE id=?", (code_id,)).fetchone())
+    finally:
+        conn.close()
+    return updated
+
+
+@app.get("/project-codes/{code_id}/history")
+def project_code_history(code_id: int):
+    conn = get_conn()
+    try:
+        rows = [row_to_dict(r) for r in conn.execute(
+            "SELECT * FROM project_code_status_events WHERE code_id=? ORDER BY changed_at ASC, id ASC",
+            (code_id,),
+        ).fetchall()]
+    finally:
+        conn.close()
+    return rows
+
+
+@app.post("/project-codes/seed")
+async def seed_project_codes(user: dict = Depends(require_admin)):
+    """STRICTLY ONE-TIME initial import of existing project codes from Databricks,
+    as a uniqueness baseline. Runs only when the list is empty — once seeded, the
+    tool's list diverges and never re-pulls from the old Databricks list; new codes
+    come only from generation in this tool."""
+    from fastapi.concurrency import run_in_threadpool
+    import salesforce_source as _sf
+    # Divergence guard: never re-pull once the list has any codes.
+    conn0 = get_conn()
+    try:
+        already = conn0.execute("SELECT COUNT(*) FROM project_codes").fetchone()[0]
+    finally:
+        conn0.close()
+    if already:
+        return {"inserted": 0, "total": already, "skipped": "already seeded — the list is now independent of the old Databricks list"}
+    try:
+        seed = await run_in_threadpool(_sf.fetch_seed_rows)
+    except _sf.SalesforceUnavailable as e:
+        raise HTTPException(503, str(e))
+    inserted = 0
+    conn = get_conn()
+    try:
+        existing = _all_codes(conn)
+        for s in seed:
+            code = s.get("code")
+            if not code or code in existing:
+                continue
+            conn.execute(
+                """INSERT INTO project_codes
+                   (code, work_type, team, customer, project_name, status, sf_account_id, sf_opp_id,
+                    source, created_at, status_updated_at, sf_account_index, sf_opp_index)
+                   VALUES (?, 'customer', NULL, ?, ?, ?, ?, ?, 'seed',
+                           COALESCE(?, datetime('now')), datetime('now'), ?, ?)""",
+                (code, s.get("customer"), s.get("project_name"),
+                 _seed_status(s.get("is_closed"), s.get("is_won")),
+                 s.get("sf_account_id"), s.get("sf_opp_id"), s.get("created_date"),
+                 s.get("sf_account_index"), s.get("sf_opp_index")),
+            )
+            existing.add(code)
+            inserted += 1
+        conn.commit()
+        total = conn.execute("SELECT COUNT(*) FROM project_codes").fetchone()[0]
+    finally:
+        conn.close()
+    return {"inserted": inserted, "total": total}
 
 
 @app.put("/constants/{key}")

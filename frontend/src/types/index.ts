@@ -15,9 +15,13 @@ export interface Project {
   labor_constants: string;
   internal_notes: string | null;
   is_active: number;
+  quote_status: string;
   author_email: string | null;
   author_name: string | null;
   access_tag: string;
+  project_code: string | null;
+  code_customer?: string | null;
+  code_project_name?: string | null;
   parts_count?: number;
   quoted_price?: number | null;
   pricing_stale?: boolean;
