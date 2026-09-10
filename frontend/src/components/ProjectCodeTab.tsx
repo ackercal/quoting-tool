@@ -336,7 +336,7 @@ const FILTER_ORDER: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
 ]
 
-function ListView({ sf, sfLoading }: { sf: SalesforceOptions | null; sfLoading: boolean }) {
+function ListView({ sf, sfLoading, reloadSf }: { sf: SalesforceOptions | null; sfLoading: boolean; reloadSf: (refresh?: boolean) => void }) {
   const { isAdmin } = useUser()
   const [codes, setCodes] = useState<ProjectCode[]>([])
   const [seeded, setSeeded] = useState(true)
@@ -475,7 +475,12 @@ function ListView({ sf, sfLoading }: { sf: SalesforceOptions | null; sfLoading: 
 
       {/* ── Salesforce list (reference) ── */}
       <div style={{ marginTop: 28 }}>
-        {sectionBar(openSf, () => setOpenSf(o => !o), 'Salesforce List', 'Reference list of Salesforce opportunities.')}
+        {sectionBar(openSf, () => setOpenSf(o => !o), 'Salesforce List', 'Reference list of Salesforce opportunities.',
+          <button onClick={e => { e.stopPropagation(); reloadSf(true) }} disabled={sfLoading}
+            title="Re-pull accounts & opportunities from Salesforce"
+            style={{ fontSize: 12, fontWeight: 600, border: '1px solid var(--gray-300)', background: '#fff', color: 'var(--gray-700)', borderRadius: 8, padding: '6px 12px', cursor: sfLoading ? 'default' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {sfLoading ? 'Refreshing…' : 'Refresh'}
+          </button>)}
         {openSf && (
           <div style={{ marginTop: 16 }}>
             <SalesforceList sf={sf} sfLoading={sfLoading} accountName={accountName} />
@@ -505,7 +510,10 @@ function SalesforceList({ sf, sfLoading, accountName }: { sf: SalesforceOptions 
 
   return (
     <div>
-      <div style={{ display: 'flex', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <span style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+          {sfLoading ? 'Refreshing…' : sf ? `${sf.accounts.length} accounts · ${sf.opportunities.length} opportunities${sf.stale ? ' · stale' : ''}` : ''}
+        </span>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search account, opportunity, or code…"
           style={{ marginLeft: 'auto', minWidth: 260, border: '1px solid var(--gray-300)', borderRadius: 8, padding: '7px 12px', fontSize: 13, outline: 'none' }} />
       </div>
@@ -772,7 +780,7 @@ export default function ProjectCodeTab() {
       </div>
 
       {view === 'list'
-        ? <ListView key={listNonce} sf={sf} sfLoading={sfLoading} />
+        ? <ListView key={listNonce} sf={sf} sfLoading={sfLoading} reloadSf={loadSf} />
         : <GenerateView sf={sf} sfLoading={sfLoading} sfError={sfError} reloadSf={loadSf} onCreated={() => setListNonce(n => n + 1)} />}
     </div>
   )
