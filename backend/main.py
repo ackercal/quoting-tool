@@ -941,9 +941,37 @@ async def salesforce_options(refresh: bool = False):
         data = await run_in_threadpool(_sf.get_options, refresh)
     except _sf.SalesforceUnavailable as e:
         raise HTTPException(503, str(e))
-    # Map each SF opportunity that already has a project code -> that code.
     conn = get_conn()
     try:
+        # Keep linked codes' names in sync with Salesforce. The link is the stable
+        # SF id (sf_account_id / sf_opp_id); the stored customer/project_name mirror
+        # the current SF account/opportunity names and refresh when they change.
+        acc_name = {a["id"]: a["name"] for a in (data.get("accounts") or [])}
+        opp_name = {o["id"]: o["name"] for o in (data.get("opportunities") or [])}
+        try:
+            linked = conn.execute(
+                "SELECT id, sf_account_id, sf_opp_id, customer, project_name FROM project_codes "
+                "WHERE sf_account_id IS NOT NULL OR sf_opp_id IS NOT NULL"
+            ).fetchall()
+            changed = 0
+            for r in linked:
+                sets, params = [], []
+                new_c = acc_name.get(r["sf_account_id"]) if r["sf_account_id"] else None
+                new_p = opp_name.get(r["sf_opp_id"]) if r["sf_opp_id"] else None
+                if new_c and new_c != r["customer"]:
+                    sets.append("customer=?"); params.append(new_c)
+                if new_p and new_p != r["project_name"]:
+                    sets.append("project_name=?"); params.append(new_p)
+                if sets:
+                    params.append(r["id"])
+                    conn.execute(f"UPDATE project_codes SET {', '.join(sets)} WHERE id=?", params)
+                    changed += 1
+            if changed:
+                conn.commit()
+        except Exception as e:  # noqa: BLE001 — reconciliation must never break the endpoint
+            print(f"[salesforce_options] name reconcile skipped: {e}")
+
+        # Map each SF opportunity that already has a project code -> that code.
         code_by_opp = {
             r["sf_opp_id"]: r["code"]
             for r in conn.execute("SELECT sf_opp_id, code FROM project_codes WHERE sf_opp_id IS NOT NULL").fetchall()
@@ -1098,11 +1126,12 @@ def edit_project_code(code_id: int, body: CodeEditRequest, user: dict = Depends(
             if body.status not in PROJECT_CODE_STATUSES:
                 raise HTTPException(400, f"status must be one of {PROJECT_CODE_STATUSES}")
             changes.append(("status", "status", row["status"], body.status))
-        if body.customer is not None:
+        # Names sourced from Salesforce (linked account / opportunity) are read-only.
+        if body.customer is not None and not row["sf_account_id"]:
             new_c = body.customer.strip() or None
             if (new_c or None) != (row["customer"] or None):
                 changes.append(("customer", "customer", row["customer"], new_c))
-        if body.project_name is not None:
+        if body.project_name is not None and not row["sf_opp_id"]:
             new_p = body.project_name.strip() or None
             if (new_p or None) != (row["project_name"] or None):
                 changes.append(("project_name", "project_name", row["project_name"], new_p))

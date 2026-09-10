@@ -244,12 +244,17 @@ function CodeDetail({ code, onUpdate }: { code: ProjectCode; onUpdate: (c: Proje
   }
 
   const statusOptions = code.work_type === 'internal' ? INTERNAL_STATUSES : CUSTOMER_STATUSES
+  // Names sourced from Salesforce can't be edited here; typed-in ones can.
+  const lockCustomer = !!code.sf_account_id
+  const lockProject = !!code.sf_opp_id
 
   async function save() {
     setSaving(true)
     try {
       const updated = await api.updateProjectCode(code.id, {
-        status: dStatus, customer: dCustomer, project_name: dProject,
+        status: dStatus,
+        ...(lockCustomer ? {} : { customer: dCustomer }),
+        ...(lockProject ? {} : { project_name: dProject }),
       })
       onUpdate(updated)
       setEditing(false)
@@ -286,14 +291,14 @@ function CodeDetail({ code, onUpdate }: { code: ProjectCode; onUpdate: (c: Proje
             </div>
           </div>
           <div style={{ marginBottom: 14 }}>
-            <Label>Customer Name</Label>
-            <input value={dCustomer} onChange={e => setDCustomer(e.target.value)} placeholder="Customer name"
-              style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--gray-300)', borderRadius: 8, padding: '9px 12px', fontSize: 14, outline: 'none' }} />
+            <Label>Customer Name {lockCustomer && <span style={{ fontWeight: 400, color: 'var(--gray-400)' }}>(from Salesforce)</span>}</Label>
+            <input value={dCustomer} onChange={e => setDCustomer(e.target.value)} placeholder="Customer name" disabled={lockCustomer} readOnly={lockCustomer}
+              style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--gray-300)', borderRadius: 8, padding: '9px 12px', fontSize: 14, outline: 'none', background: lockCustomer ? 'var(--gray-100)' : '#fff', color: lockCustomer ? 'var(--gray-500)' : 'var(--gray-900)', cursor: lockCustomer ? 'not-allowed' : 'text' }} />
           </div>
           <div style={{ marginBottom: 16 }}>
-            <Label>Project Name</Label>
-            <input value={dProject} onChange={e => setDProject(e.target.value)} placeholder="Project name"
-              style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--gray-300)', borderRadius: 8, padding: '9px 12px', fontSize: 14, outline: 'none' }} />
+            <Label>Project Name {lockProject && <span style={{ fontWeight: 400, color: 'var(--gray-400)' }}>(from Salesforce)</span>}</Label>
+            <input value={dProject} onChange={e => setDProject(e.target.value)} placeholder="Project name" disabled={lockProject} readOnly={lockProject}
+              style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--gray-300)', borderRadius: 8, padding: '9px 12px', fontSize: 14, outline: 'none', background: lockProject ? 'var(--gray-100)' : '#fff', color: lockProject ? 'var(--gray-500)' : 'var(--gray-900)', cursor: lockProject ? 'not-allowed' : 'text' }} />
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={save} disabled={saving}
