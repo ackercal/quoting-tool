@@ -310,7 +310,6 @@ function CodeDetail({ code, onUpdate }: { code: ProjectCode; onUpdate: (c: Proje
               Cancel
             </button>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 10 }}>The project code ({code.code}) never changes.</div>
         </div>
       )}
 
