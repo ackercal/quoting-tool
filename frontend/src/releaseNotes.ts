@@ -28,6 +28,15 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.10.1',
+    date: '2026-09-14',
+    title: 'Meet Quoter',
+    summary: 'The tool has a name and a logo.',
+    changes: [
+      { type: 'changed', text: 'The app is now called “Quoter,” with a new price-tag logo shown in the sidebar and browser tab.' },
+    ],
+  },
+  {
     version: '1.10.0',
     date: '2026-09-10',
     title: 'Project Codes',
