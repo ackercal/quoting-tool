@@ -6,8 +6,9 @@ import NumInput from './NumInput'
 import { useUser } from '../user'
 import OwnerPicker from './OwnerPicker'
 
-// Only open codes are selectable for a quote: Discovery / Closed Won / Internal.
-const PICKABLE_STATUSES = new Set(['Discovery', 'Closed Won', 'Internal'])
+// Only not-yet-quoted codes are selectable: Discovery / Internal. Closed Won and
+// Closed Lost already have a quote (that's why they're closed), so they're excluded.
+const PICKABLE_STATUSES = new Set(['Discovery', 'Internal'])
 
 // Project-code picker with one search bar that matches across code, customer,
 // and project name (same as the Project Code List search). Only open codes
