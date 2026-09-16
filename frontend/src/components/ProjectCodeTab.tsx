@@ -40,6 +40,68 @@ function money(n: number | null): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
+// ── CSV export + clipboard helpers ──────────────────────────────────────────────
+function csvEscape(v: unknown): string {
+  const s = v == null ? '' : String(v)
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+function downloadCsv(filename: string, headers: string[], rows: (string | number | null)[][]) {
+  const lines = [headers, ...rows].map(r => r.map(csvEscape).join(','))
+  // Prepend a BOM so Excel reads UTF-8 correctly.
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+function copyToClipboard(text: string): Promise<void> {
+  const fallback = () => {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta)
+    } catch { /* ignore */ }
+  }
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => { fallback() })
+  }
+  fallback()
+  return Promise.resolve()
+}
+
+// Small copy-to-clipboard button (manages its own "copied" flash).
+function CopyButton({ text, title = 'Copy code' }: { text: string; title?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); copyToClipboard(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200) }) }}
+      title={copied ? 'Copied' : title}
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, border: '1px solid var(--gray-300)', background: '#fff', borderRadius: 6, cursor: 'pointer', color: copied ? '#256a3a' : 'var(--gray-500)', flexShrink: 0, padding: 0 }}
+    >
+      {copied ? (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+      )}
+    </button>
+  )
+}
+
+// "Download CSV" button for a table (exports whatever rows are currently shown).
+function DownloadCsvButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={e => { e.stopPropagation(); onClick() }} disabled={disabled} title="Download the current list as a CSV"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, border: '1px solid var(--gray-300)', background: '#fff', color: 'var(--gray-700)', borderRadius: 8, padding: '7px 12px', cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap', opacity: disabled ? 0.5 : 1, flexShrink: 0 }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      Download CSV
+    </button>
+  )
+}
+
 function statusPillStyle(status: string): React.CSSProperties {
   const colors: Record<string, [string, string]> = {
     'Discovery':   ['rgba(255,153,0,0.12)', '#b46b00'],
@@ -389,6 +451,14 @@ function ListView({ sf, sfLoading, reloadSf }: { sf: SalesforceOptions | null; s
     return m
   }, [sf])
 
+  function downloadCodes() {
+    downloadCsv(
+      `project-codes-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Project Code', 'Status', 'Customer', 'Project Name', 'Created', 'Status Updated'],
+      codes.map(c => [c.code, c.status, c.customer || '', c.project_name || '', fmtDate(c.created_at), fmtDate(c.status_updated_at)]),
+    )
+  }
+
   const filterBtn = (key: FilterKey, label: string) => (
     <button key={key} onClick={() => setFilter(key)} style={{
       fontSize: 13, fontWeight: 600, borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
@@ -451,7 +521,12 @@ function ListView({ sf, sfLoading, reloadSf }: { sf: SalesforceOptions | null; s
                   {!loading && codes.map(c => (
                     <Fragment key={c.id}>
                       <tr onClick={() => setExpanded(expanded === c.id ? null : c.id)} style={{ cursor: 'pointer', background: expanded === c.id ? 'var(--gray-50, #f9f9f9)' : '#fff' }}>
-                        <td style={{ ...td, fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>{c.code}</td>
+                        <td style={{ ...td, fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            {c.code}
+                            <CopyButton text={c.code} />
+                          </span>
+                        </td>
                         <td style={td}><span style={statusPillStyle(c.status)}>{c.status}</span></td>
                         <td style={td}>{c.customer || '—'}</td>
                         <td style={td}>{c.project_name || '—'}</td>
@@ -473,6 +548,9 @@ function ListView({ sf, sfLoading, reloadSf }: { sf: SalesforceOptions | null; s
                 </tbody>
               </table>
             </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+            <DownloadCsvButton onClick={downloadCodes} disabled={loading || codes.length === 0} />
           </div>
         </div>
       )}
@@ -511,6 +589,25 @@ function SalesforceList({ sf, sfLoading, accountName }: { sf: SalesforceOptions 
   }, [sf, q, accountName]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const link = (id: string) => sf?.sf_instance_url ? `${sf.sf_instance_url.replace(/\/$/, '')}/lightning/r/Opportunity/${id}/view` : null
+
+  function downloadSf() {
+    downloadCsv(
+      `salesforce-opportunities-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Account', 'Opportunity', 'Status', 'Project Code', 'SF Link', 'Value', 'Close Date'],
+      rows.map(o => {
+        const status = o.is_closed ? (o.is_won ? 'Closed Won' : 'Closed Lost') : 'Open'
+        return [
+          accountName.get(o.account_id || '') || '',
+          o.name,
+          o.stage || status,
+          codeByOpp[o.id] || '',
+          link(o.id) || o.id,
+          o.amount == null ? '' : o.amount,
+          fmtDate(o.close_date),
+        ]
+      }),
+    )
+  }
 
   return (
     <div>
@@ -553,7 +650,10 @@ function SalesforceList({ sf, sfLoading, accountName }: { sf: SalesforceOptions 
           </table>
         </div>
       </div>
-      {sf && rows.length === 100 && <div style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 8 }}>Showing first 100 — search to narrow.</div>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 10 }}>
+        <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>{sf && rows.length === 100 ? 'Showing first 100 — search to narrow.' : ''}</span>
+        <DownloadCsvButton onClick={downloadSf} disabled={sfLoading || rows.length === 0} />
+      </div>
     </div>
   )
 }
@@ -582,7 +682,9 @@ function GenerateView({ sf, sfLoading, sfError, reloadSf, onCreated }: {
     const opps = sf?.opportunities || []
     // Scope opportunity suggestions to the picked account, if any.
     const scoped = custSfId ? opps.filter(o => o.account_id === custSfId) : opps
-    return scoped.map(o => ({ value: o.id, label: o.name, sub: [o.stage, o.is_closed ? null : 'Open'].filter(Boolean).join(' · ') || undefined }))
+    // Only offer open opportunities — a Closed Won/Lost opp is done, so you wouldn't
+    // be generating a fresh project code for it. (Accounts carry no closed status.)
+    return scoped.filter(o => !o.is_closed).map(o => ({ value: o.id, label: o.name, sub: o.stage || 'Open' }))
   }, [sf, custSfId])
 
   const customerName = workType === 'internal' ? null : (custName.trim() || null)

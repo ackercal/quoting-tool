@@ -28,6 +28,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.10.3',
+    date: '2026-09-16',
+    title: 'Download & copy project codes',
+    summary: 'Export the code and Salesforce lists to CSV, and copy any code with one click.',
+    changes: [
+      { type: 'added', text: 'Project Code tab: a “Download CSV” button on both the Project Code List and the Salesforce List exports exactly what’s currently shown (respecting your filters and search).' },
+      { type: 'added', text: 'Project Code List: a small copy button next to each code copies it to the clipboard in one click.' },
+      { type: 'changed', text: 'Generate (customer work): the opportunity picker now only offers open opportunities — Closed Won / Closed Lost opps are hidden, since you wouldn’t start a new code for a closed deal.' },
+    ],
+  },
+  {
     version: '1.10.2',
     date: '2026-09-16',
     title: 'Quote PDF numbers now reconcile',
