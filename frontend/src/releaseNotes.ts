@@ -28,6 +28,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.10.2',
+    date: '2026-09-16',
+    title: 'Quote PDF numbers now reconcile',
+    summary: 'Fixed the exported quote so the per-part chart and breakdowns add up to the total.',
+    changes: [
+      { type: 'fixed', text: 'Exported quote PDF: the “Price per Part” chart and Part Breakdown now show each part’s allocated first / duplicate assembly price, so 1 first + N duplicates adds up to the quoted total (previously these were grossed up standalone and could exceed the total).' },
+      { type: 'fixed', text: 'Exported quote PDF: the “Price Breakdown by Category” table now uses the same margin blend as the quote and includes Materials, so the category rows sum to 100% of the total.' },
+    ],
+  },
+  {
     version: '1.10.1',
     date: '2026-09-14',
     title: 'Meet Quoter',

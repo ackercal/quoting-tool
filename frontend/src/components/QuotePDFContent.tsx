@@ -61,16 +61,16 @@ function YearChart({ yearPrices, currentYear }: { yearPrices: Record<number, Yea
   )
 }
 
-function PartPriceChart({ parts, details, margin }: { parts: Part[]; details: PartCostDetail[]; margin: number }) {
-  if (!details.length) return null
+function PartPriceChart({ rows }: { rows: { name: string; first: number; dup: number }[] }) {
+  if (!rows.length) return null
   const ml = 52, mr = 20, mt = 16, mb = 56
   const W = 680, H = 240
   const cW = W - ml - mr, cH = H - mt - mb
   const TICKS = 4
-  const maxVal = Math.max(...details.flatMap(d => [d.first_part_cost, d.dup_part_cost].map(v => v / (1 - margin))), 0)
+  const maxVal = Math.max(...rows.flatMap(r => [r.first, r.dup]), 0)
   const yMax = niceMax(maxVal)
   const sy = (v: number) => cH - (v / yMax) * cH
-  const n = parts.length
+  const n = rows.length
   const groupW = cW / Math.max(n, 1)
   const barW = Math.min(Math.max(groupW * 0.32, 14), 54)
   const gap = barW * 0.28
@@ -88,41 +88,57 @@ function PartPriceChart({ parts, details, margin }: { parts: Part[]; details: Pa
             </g>
           )
         })}
-        {details.map((d, i) => {
+        {rows.map((r, i) => {
           const cx = (i + 0.5) * groupW
-          const fp = d.first_part_cost / (1 - margin)
-          const dp = d.dup_part_cost   / (1 - margin)
-          const fH = Math.max((fp / yMax) * cH, 0)
-          const dH = Math.max((dp / yMax) * cH, 0)
-          const name = parts[i]?.name ?? ''
-          const label = name.length > 15 ? name.slice(0, 14) + '…' : name
+          const fH = Math.max((r.first / yMax) * cH, 0)
+          const dH = Math.max((r.dup   / yMax) * cH, 0)
+          const label = r.name.length > 15 ? r.name.slice(0, 14) + '…' : r.name
           return (
             <g key={i}>
-              <rect x={cx - gap / 2 - barW} y={sy(fp)} width={barW} height={fH} fill="#FF9900" rx={2} />
-              <rect x={cx + gap / 2}         y={sy(dp)} width={barW} height={dH} fill="#4A7FC1" rx={2} />
+              <rect x={cx - gap / 2 - barW} y={sy(r.first)} width={barW} height={fH} fill="#FF9900" rx={2} />
+              <rect x={cx + gap / 2}         y={sy(r.dup)}   width={barW} height={dH} fill="#4A7FC1" rx={2} />
               <text x={cx} y={cH + 18} textAnchor="middle" fontSize={11} fill="#2E2E2E">{label}</text>
             </g>
           )
         })}
         <line x1={0} y1={cH} x2={cW} y2={cH} stroke="#CCCCCC" strokeWidth={1} />
       </g>
-      <g transform={`translate(${(W - 194) / 2}, ${H - 12})`}>
+      <g transform={`translate(${(W - 250) / 2}, ${H - 12})`}>
         <rect x={0} y={-9} width={10} height={10} fill="#FF9900" rx={1} />
-        <text x={14} y={0} fontSize={11} fill="#2E2E2E">First Part</text>
-        <rect x={90} y={-9} width={10} height={10} fill="#4A7FC1" rx={1} />
-        <text x={104} y={0} fontSize={11} fill="#2E2E2E">Duplicate Part</text>
+        <text x={14} y={0} fontSize={11} fill="#2E2E2E">First Assembly</text>
+        <rect x={120} y={-9} width={10} height={10} fill="#4A7FC1" rx={1} />
+        <text x={134} y={0} fontSize={11} fill="#2E2E2E">Duplicate Assembly</text>
       </g>
     </svg>
   )
 }
 
 export default function QuotePDFContent({ quote }: Props) {
-  const { project, parts, part_details, quoted_price,
+  const { project, parts, part_details, quoted_price, total_cost,
           first_assembly_cost, dup_assembly_cost, first_assembly_price, dup_assembly_price,
           num_dup_assemblies, margin, year_prices } = quote
 
   const firstAssemblyPrice = first_assembly_price ?? first_assembly_cost / (1 - margin)
   const dupAssemblyPrice   = dup_assembly_price   ?? dup_assembly_cost   / (1 - margin)
+
+  // Cost → price factor the quote actually uses (blended internal + OSP margin):
+  // quoted_price = total_cost × priceFactor. Applying it to per-category costs keeps the
+  // category table summing to the quoted total, instead of re-grossing every line at the
+  // internal margin alone (which ignored the OSP margin and didn't add up to 100%).
+  const priceFactor = total_cost > 0 ? quoted_price / total_cost : 0
+
+  // Per-part prices = the summary First/Duplicate Assembly prices split across parts by
+  // cost share, so 1×first + n×duplicate reconciles to the quoted total (previously each
+  // part was grossed up standalone, so a single part could exceed the whole project total).
+  const partsFirstCost = part_details.reduce((s, d) => s + d.first_assembly, 0)
+  const partsDupCost   = part_details.reduce((s, d) => s + d.dup_assembly,   0)
+  const partFirstPrice = (d: PartCostDetail) => partsFirstCost > 0 ? firstAssemblyPrice * d.first_assembly / partsFirstCost : 0
+  const partDupPrice   = (d: PartCostDetail) => partsDupCost   > 0 ? dupAssemblyPrice   * d.dup_assembly   / partsDupCost   : 0
+  const partRows = parts.map((p, i) => ({
+    name:  p.name,
+    first: part_details[i] ? partFirstPrice(part_details[i]) : 0,
+    dup:   part_details[i] ? partDupPrice(part_details[i])   : 0,
+  }))
 
   return (
     <div style={{ fontFamily: "'Roboto', sans-serif", background: '#fff', color: '#191919', width: 800, padding: 0 }}>
@@ -173,13 +189,14 @@ export default function QuotePDFContent({ quote }: Props) {
 
         {/* ── Project category breakdown (price) ── */}
         {quote.project_category_breakdown && (() => {
-          const m = 1 - margin
+          const cb = quote.project_category_breakdown
           const cats: [string, number][] = [
-            ['Labor',                quote.project_category_breakdown.labor           / m],
-            ['Robot',                quote.project_category_breakdown.robot           / m],
-            ['Heat Treat',           quote.project_category_breakdown.heat_treat      / m],
-            ['Shipping',             quote.project_category_breakdown.shipping        / m],
-            ['Non-Roboformed Parts', quote.project_category_breakdown.non_roboformed  / m],
+            ['Labor',                cb.labor          * priceFactor],
+            ['Robot',                cb.robot          * priceFactor],
+            ['Materials',            cb.materials      * priceFactor],
+            ['Heat Treat',           cb.heat_treat     * priceFactor],
+            ['Shipping',             cb.shipping       * priceFactor],
+            ['Non-Roboformed Parts', cb.non_roboformed * priceFactor],
           ].filter(([, val]) => (val as number) > 0) as [string, number][]
           return (
             <>
@@ -212,9 +229,9 @@ export default function QuotePDFContent({ quote }: Props) {
         })()}
 
         {/* ── Price per part chart ── */}
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12 }}>Price per Part — First Part vs Duplicate</div>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12 }}>Price per Part - First vs Duplicate Assembly</div>
         <div style={{ border: '1px solid #E8E8E8', borderRadius: 8, padding: '16px 0 4px', marginBottom: 28 }}>
-          <PartPriceChart parts={parts} details={part_details} margin={margin} />
+          <PartPriceChart rows={partRows} />
         </div>
 
         {/* ── Per-part breakdown ── */}
@@ -235,8 +252,8 @@ export default function QuotePDFContent({ quote }: Props) {
                 <tr key={part.id}>
                   <td style={{ padding: '10px 16px', fontSize: 13, fontWeight: 500, borderBottom: '1px solid #eee' }}>{partDisplayName(part.name, part.manufacturing_method)}</td>
                   <td style={{ padding: '10px 16px', fontSize: 13, textAlign: 'right', color: '#6B6B6B', borderBottom: '1px solid #eee' }}>{part.quantity_per_assembly}</td>
-                  <td style={{ padding: '10px 16px', fontSize: 13, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(d.first_assembly / (1 - margin))}</td>
-                  <td style={{ padding: '10px 16px', fontSize: 13, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(d.dup_assembly / (1 - margin))}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 13, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(partFirstPrice(d))}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 13, textAlign: 'right', borderBottom: '1px solid #eee' }}>{$(partDupPrice(d))}</td>
                 </tr>
               )
             })}
