@@ -5,7 +5,6 @@ import type { Project, Part } from '../types'
 import ProjectForm from '../components/ProjectForm'
 import PartForm from '../components/PartForm'
 import QuoteView from '../components/QuoteView'
-import QuoterLogo from '../components/QuoterLogo'
 import { partDisplayName } from '../utils/manufacturing'
 
 type Selection = { type: 'project' } | { type: 'part'; id: number } | { type: 'quote' }
@@ -150,7 +149,7 @@ export default function ProjectPage() {
       {/* ── Sidebar ── */}
       <div className="sidebar">
         <div className="sidebar-header">
-          <div className="sidebar-logo" onClick={() => navigate('/')}><QuoterLogo size={30} /><span>Quoter</span></div>
+          <div className="sidebar-logo" onClick={() => navigate('/')}><span>Quoter</span></div>
         </div>
 
         <nav className="sidebar-nav">

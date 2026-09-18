@@ -6,7 +6,6 @@ import { RELEASES, CURRENT_VERSION, type ChangeType } from '../releaseNotes'
 import { useUser } from '../user'
 import OwnerPicker from '../components/OwnerPicker'
 import ProjectCodeTab from '../components/ProjectCodeTab'
-import QuoterLogo from '../components/QuoterLogo'
 
 type Section = 'projects' | 'devtools' | 'readme' | 'helpers' | 'projectcode' | 'releases' | 'admin'
 
@@ -361,7 +360,7 @@ export default function Home() {
       {/* ── Sidebar ── */}
       <div className="sidebar">
         <div className="sidebar-header">
-          <div className="sidebar-logo"><QuoterLogo size={30} /><span>Quoter</span></div>
+          <div className="sidebar-logo"><span>Quoter</span></div>
         </div>
         <nav className="sidebar-nav">
           <div

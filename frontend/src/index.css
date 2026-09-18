@@ -77,13 +77,18 @@ input, textarea, select {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-family: Roboto, system-ui, sans-serif;
   font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--orange);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: #E08200;
   cursor: pointer;
   transition: opacity 0.12s;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-logo { color: #FF9900; }
 }
 
 .sidebar-logo svg { flex: none; }
