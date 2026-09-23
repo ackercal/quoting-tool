@@ -187,6 +187,7 @@ export interface QuoteResult {
   // snapshot / versioning metadata (added by the snapshot layer)
   snapshot?: Snapshot;
   stale?: boolean;
+  inputs_stale?: boolean;
   current_pricing_summary?: string;
   current_pricing_version?: string;
   current_preview?: {

@@ -370,7 +370,7 @@ export default function Home() {
             <svg className="sidebar-item-icon" fill="currentColor" viewBox="0 0 20 20">
               <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
             </svg>
-            Projects
+            Quotes
           </div>
           <div
             className={`sidebar-item${section === 'projectcode' ? ' active' : ''}`}
@@ -552,14 +552,14 @@ export default function Home() {
           <div className="home-page">
             <div className="home-header">
               <div>
-                <div className="home-title">Projects</div>
-                <div className="home-subtitle">Select a project or create a new one</div>
+                <div className="home-title">Quotes</div>
+                <div className="home-subtitle">Select a quote or create a new one</div>
               </div>
               <button className="btn-primary" onClick={() => setShowNew(true)}>
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
-                New Project
+                New Quote
               </button>
             </div>
 
@@ -634,8 +634,8 @@ export default function Home() {
               if (visible.length === 0) return (
                 <div className="empty-state">
                   <div className="empty-state-icon">📋</div>
-                  <div className="empty-state-title">{projects.length === 0 ? 'No quotes yet' : `No ${filter} projects`}</div>
-                  <div>{projects.length === 0 ? 'Create your first project to get started.' : 'Switch the filter to see other projects.'}</div>
+                  <div className="empty-state-title">{projects.length === 0 ? 'No quotes yet' : `No ${filter} quotes`}</div>
+                  <div>{projects.length === 0 ? 'Create your first quote to get started.' : 'Switch the filter to see other quotes.'}</div>
                 </div>
               )
               return (
@@ -739,7 +739,7 @@ export default function Home() {
             </div>
 
             {/* Projects table */}
-            <div className="section-heading" style={{ marginTop: 0 }}>All Projects</div>
+            <div className="section-heading" style={{ marginTop: 0 }}>All Quotes</div>
             {loading && <div className="loading">Loading…</div>}
             {!loading && (
               <div className="quote-section" style={{ marginBottom: 32 }}>
@@ -757,7 +757,7 @@ export default function Home() {
                   </thead>
                   <tbody>
                     {projects.length === 0 && (
-                      <tr><td colSpan={7} style={{ color: 'var(--gray-400)', textAlign: 'center' }}>No projects yet</td></tr>
+                      <tr><td colSpan={7} style={{ color: 'var(--gray-400)', textAlign: 'center' }}>No quotes yet</td></tr>
                     )}
                     {projects.map(p => (
                       <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${p.id}`)}>
@@ -1145,9 +1145,9 @@ export default function Home() {
       {showNew && (
         <div className="modal-overlay" onClick={() => setShowNew(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">New Project</div>
+            <div className="modal-title">New Quote</div>
             <div className="field">
-              <label>Project Name <span className="required">*</span></label>
+              <label>Quote Name <span className="required">*</span></label>
               <input
                 autoFocus
                 value={newName}
@@ -1159,7 +1159,7 @@ export default function Home() {
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setShowNew(false)}>Cancel</button>
               <button className="btn-primary" onClick={handleCreate} disabled={creating || !newName.trim()}>
-                {creating ? 'Creating…' : 'Create Project'}
+                {creating ? 'Creating…' : 'Create Quote'}
               </button>
             </div>
           </div>
@@ -1249,7 +1249,7 @@ function AdminUsersTable({ users, onChange }: { users: AppUser[] | null; onChang
       </table>
       <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 10, lineHeight: 1.6 }}>
         <strong>“all”</strong> means the person can see every quote. To restrict someone later, set this to a vertical tag
-        (or comma-separated tags) that matches the access tag on the projects they should see.
+        (or comma-separated tags) that matches the access tag on the quotes they should see.
       </div>
     </div>
   )
@@ -1285,7 +1285,7 @@ function OwnerAccessModal({ project, onCancel, onSave }: {
           <OwnerPicker email={authorEmail} onChange={(em, nm) => { setAuthorEmail(em); setAuthorName(nm) }} />
         </div>
         <div className="field">
-          <label>Who can see this project</label>
+          <label>Who can see this quote</label>
           <input value={accessTag} onChange={e => setAccessTag(e.target.value)} placeholder="all" />
           <div className="field-hint">
             “all” = visible to everyone. A vertical tag (e.g. <em>automotive</em>) limits it to users whose access includes that tag.

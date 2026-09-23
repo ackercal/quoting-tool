@@ -408,25 +408,31 @@ export default function QuoteView({ projectId }: Props) {
       {/* ── Pricing version / snapshot status ── */}
       {quote.snapshot && (
         <div style={{ marginBottom: 22 }}>
-          {quote.stale ? (
+          {(quote.stale || quote.inputs_stale) ? (
             <div style={{ background: 'var(--orange-soft, #fff3e0)', border: '1px solid var(--orange, #FF9900)', borderRadius: 10, padding: '12px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 14, color: 'var(--gray-800, #333)' }}>
-                  <strong>This quote uses older pricing</strong> (saved {fmtWhen(quote.snapshot.created_at)}). Newer pricing is available.
+                  {quote.stale && quote.inputs_stale ? (
+                    <><strong>This quote is out of date</strong> — the inputs changed and newer pricing is available (quote saved {fmtWhen(quote.snapshot.created_at)}).</>
+                  ) : quote.stale ? (
+                    <><strong>This quote uses older pricing</strong> (saved {fmtWhen(quote.snapshot.created_at)}). Newer pricing is available.</>
+                  ) : (
+                    <><strong>Inputs have changed since this quote</strong> (saved {fmtWhen(quote.snapshot.created_at)}). Update it to apply your edits.</>
+                  )}
                 </span>
                 <button onClick={doRefresh} disabled={refreshing} style={smallPrimaryBtn}>
-                  {refreshing ? 'Refreshing…' : 'Refresh to current pricing'}
+                  {refreshing ? 'Updating…' : 'Update quote'}
                 </button>
               </div>
               {quote.current_preview && (
                 <div style={{ fontSize: 13, color: 'var(--gray-600)', marginTop: 8 }}>
-                  This quote: <strong>{$(quote.quoted_price)}</strong> &nbsp;→&nbsp; at current pricing: <strong>{$(quote.current_preview.quoted_price)}</strong>
+                  This quote: <strong>{$(quote.quoted_price)}</strong> &nbsp;→&nbsp; updated: <strong>{$(quote.current_preview.quoted_price)}</strong>
                 </div>
               )}
             </div>
           ) : (
             <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>
-              Pricing current · saved {fmtWhen(quote.snapshot.created_at)}{quote.snapshot.is_reconstructed ? ' · reconstructed baseline' : ''}
+              Up to date · saved {fmtWhen(quote.snapshot.created_at)}{quote.snapshot.is_reconstructed ? ' · reconstructed baseline' : ''}
             </div>
           )}
         </div>
@@ -703,7 +709,7 @@ export default function QuoteView({ projectId }: Props) {
           <span className="quote-section-title">App Update History</span>
         </div>
         <div style={{ fontSize: 12, color: 'var(--gray-500)', padding: '12px 16px 14px', lineHeight: 1.6 }}>
-          With this project's <strong>current inputs</strong>, what this quote would price at under each past app update
+          With this quote's <strong>current inputs</strong>, what this quote would price at under each past app update
           that changed pricing. See the Release Notes to read what each version changed.
         </div>
         {priceHistory === null ? (

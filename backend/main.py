@@ -6,6 +6,8 @@ import sqlite3
 import base64
 import json
 import os
+import hashlib
+import dataclasses
 
 from database import get_conn, init_db, ADMIN_EMAIL, ADMIN_NAME
 import calculations as _calc
@@ -379,7 +381,8 @@ def update_project(pid: int, data: ProjectUpdate, user: dict = Depends(current_u
     conn.commit()
     row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
     conn.close()
-    _recompute_active_snapshot(pid, "Edited project settings", user.get("email"))
+    # Quote is a frozen snapshot: inputs save here, but the quote only regenerates when
+    # the user clicks "Update quote" (get_quote flags it out of date via inputs_stale).
     _log_edit(pid, user, "Edited project settings")
     return row_to_dict(row)
 
@@ -487,7 +490,6 @@ def create_part(pid: int, data: PartCreate, user: dict = Depends(current_user)):
     conn.commit()
     row = conn.execute("SELECT * FROM parts WHERE id=?", (part_id,)).fetchone()
     conn.close()
-    _recompute_active_snapshot(pid, "Added a part", user.get("email"))
     _log_edit(pid, user, f"Added part '{data.name}'")
     return row_to_dict(row)
 
@@ -530,7 +532,6 @@ def update_part(part_id: int, data: PartUpdate, user: dict = Depends(current_use
     conn2.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (p["project_id"],))
     conn2.commit()
     conn2.close()
-    _recompute_active_snapshot(p["project_id"], "Edited a part", user.get("email"))
     _log_edit(p["project_id"], user, f"Edited part '{p['name']}'")
     return p
 
@@ -546,7 +547,6 @@ def delete_part(part_id: int, user: dict = Depends(current_user)):
     conn.commit()
     conn.close()
     if pid is not None:
-        _recompute_active_snapshot(pid, "Removed a part", user.get("email"))
         _log_edit(pid, user, "Removed a part")
 
 
@@ -610,6 +610,22 @@ def compute_quote_result(p: dict, parts_data: list[dict]) -> dict:
     result["project"] = p
     result["parts"] = parts_data
     return result
+
+
+def _inputs_fingerprint(p: dict, parts_data: list[dict]) -> str:
+    """Stable hash of the quote-affecting inputs (project + parts). Used to detect when
+    a project's saved inputs have diverged from its active (frozen) quote snapshot."""
+    proj_inputs, part_inputs = _build_quote_inputs(p, parts_data)
+    blob = {
+        "project": dataclasses.asdict(proj_inputs),
+        "name": p.get("name"),
+        "material_type": p.get("material_type"),
+        "parts": [
+            {**dataclasses.asdict(pi), "name": pt.get("name")}
+            for pi, pt in zip(part_inputs, parts_data)
+        ],
+    }
+    return hashlib.sha256(json.dumps(blob, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
 
 
 def _load_project_and_parts(conn, pid: int):
@@ -831,9 +847,20 @@ def get_quote(pid: int, user: dict = Depends(current_user)):
     cur_ver = pricing_version()
     stale = active["pricing_version"] != cur_ver
 
-    # When stale, also compute what the quote would be under current pricing (for the
-    # "newer pricing available — was X, now Y" comparison), without saving it.
-    if stale:
+    # Inputs are auto-saved as the user edits, but the quote is a frozen snapshot — so
+    # detect when the saved inputs no longer match the snapshot the quote was built from.
+    frozen_proj = frozen.get("project")
+    frozen_parts = frozen.get("parts")
+    inputs_stale = False
+    if frozen_proj is not None and frozen_parts is not None:
+        try:
+            inputs_stale = _inputs_fingerprint(p, parts_data) != _inputs_fingerprint(frozen_proj, frozen_parts)
+        except Exception:
+            inputs_stale = False
+
+    # When out of date (pricing and/or inputs), also compute what the quote would be now
+    # (for the "was X, now Y" comparison), without saving it.
+    if stale or inputs_stale:
         preview = compute_quote_result(p, parts_data)
         frozen["current_preview"] = {
             "quoted_price":         preview["quoted_price"],
@@ -845,6 +872,7 @@ def get_quote(pid: int, user: dict = Depends(current_user)):
 
     frozen["snapshot"] = _snapshot_meta(active)
     frozen["stale"] = stale
+    frozen["inputs_stale"] = inputs_stale
     frozen["current_pricing_version"] = cur_ver
     frozen["current_pricing_summary"] = pricing_summary()
     return frozen

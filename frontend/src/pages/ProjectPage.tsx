@@ -139,8 +139,8 @@ export default function ProjectPage() {
     }
   }, [sel, parts, project])
 
-  if (loading) return <div className="loading">Loading project…</div>
-  if (!project) return <div style={{ padding: 32 }}>Project not found.</div>
+  if (loading) return <div className="loading">Loading quote…</div>
+  if (!project) return <div style={{ padding: 32 }}>Quote not found.</div>
 
   const activePartId = sel.type === 'part' ? sel.id : null
 
@@ -156,7 +156,7 @@ export default function ProjectPage() {
           {/* Back */}
           <div className="sidebar-item" onClick={() => navigate('/')}>
             <IconBack />
-            <span>All Projects</span>
+            <span>All Quotes</span>
           </div>
 
           <div className="sidebar-divider" />
@@ -254,7 +254,7 @@ export default function ProjectPage() {
           <div className="notes-label">Internal Notes</div>
           <textarea
             placeholder={sel.type === 'project'
-              ? 'Add notes about this project…'
+              ? 'Add notes about this quote…'
               : 'Add notes about this part…'}
             value={notes}
             onChange={e => handleNotesChange(e.target.value)}

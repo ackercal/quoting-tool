@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { api } from '../api/client'
 import type { ProjectCode } from '../api/client'
 import type { Project } from '../types'
@@ -91,8 +91,12 @@ export default function ProjectForm({ project, onUpdate }: Props) {
   const [form, setForm]       = useState(project)
   const [saveStatus, setSave] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [codes, setCodes]     = useState<ProjectCode[]>([])
+  // Serialized form as last persisted — guards the auto-save effect from firing on
+  // load and from re-saving values that came back from the server.
+  const savedRef = useRef<string>(JSON.stringify(project))
 
-  useEffect(() => { setForm(project) }, [project])
+  // Sync from props only when switching to a different quote (not on our own saves).
+  useEffect(() => { setForm(project); savedRef.current = JSON.stringify(project) }, [project.id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { api.listProjectCodes({ show_all: true }).then(d => setCodes(d.codes)).catch(() => setCodes([])) }, [])
 
   const selectedCode = codes.find(c => c.code === form.project_code) || null
@@ -100,24 +104,33 @@ export default function ProjectForm({ project, onUpdate }: Props) {
   const set = (key: keyof Project, value: unknown) =>
     setForm(f => ({ ...f, [key]: value }))
 
-  const save = useCallback(async () => {
+  // Auto-save: debounce-persist whenever the form changes. Quote Name is required,
+  // so skip saving while it's blank.
+  useEffect(() => {
+    const serialized = JSON.stringify(form)
+    if (serialized === savedRef.current) return
+    if (!form.name.trim()) return
     setSave('saving')
-    try {
-      const updated = await api.updateProject(form.id, form)
-      onUpdate(updated)
-      setSave('saved')
-      setTimeout(() => setSave('idle'), 2000)
-    } catch {
-      setSave('idle')
-    }
+    const t = setTimeout(async () => {
+      try {
+        const updated = await api.updateProject(form.id, form)
+        savedRef.current = serialized
+        onUpdate(updated)
+        setSave('saved')
+        setTimeout(() => setSave(s => (s === 'saved' ? 'idle' : s)), 1500)
+      } catch {
+        setSave('idle')
+      }
+    }, 600)
+    return () => clearTimeout(t)
   }, [form, onUpdate])
 
   return (
     <div className="content-area">
       <div className="page-title">{form.name}</div>
-      <div className="page-subtitle">Project-level configuration and assembly details</div>
+      <div className="page-subtitle">Quote-level configuration and assembly details</div>
 
-      <div className="section-heading">Project Details</div>
+      <div className="section-heading">Quote Details</div>
       <div className="form-grid">
         <div className="field">
           <label>Quote Name <span className="required">*</span></label>
@@ -259,10 +272,9 @@ export default function ProjectForm({ project, onUpdate }: Props) {
       </div>
 
       <div className="save-bar">
-        <button className="btn-primary" onClick={save} disabled={saveStatus === 'saving'}>
-          {saveStatus === 'saving' ? 'Saving…' : 'Save Project'}
-        </button>
-        {saveStatus === 'saved' && <span className="save-status saved">✓ Saved</span>}
+        <span className="save-status" style={{ color: 'var(--gray-500)', fontSize: 13 }}>
+          {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? '✓ Saved' : 'Changes save automatically'}
+        </span>
       </div>
     </div>
   )

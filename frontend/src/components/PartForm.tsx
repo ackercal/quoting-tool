@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api } from '../api/client'
 import type { Part } from '../types'
 import NumInput from './NumInput'
@@ -27,22 +27,34 @@ export default function PartForm({ part, year, onUpdate, onDelete, onDuplicate }
   const [form, setForm]          = useState(part)
   const [saveStatus, setSave]    = useState<'idle' | 'saving' | 'saved'>('idle')
   const [confirmDel, setConfirm] = useState(false)
+  // Serialized form as last persisted — guards auto-save from firing on load / echoes.
+  const savedRef = useRef<string>(JSON.stringify(part))
 
-  useEffect(() => { setForm(part) }, [part])
+  // Sync from props only when switching to a different part (not on our own saves).
+  useEffect(() => { setForm(part); savedRef.current = JSON.stringify(part) }, [part.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (key: keyof Part, value: unknown) =>
     setForm(f => ({ ...f, [key]: value }))
 
-  const save = useCallback(async () => {
+  // Auto-save: debounce-persist whenever the form changes. Part Name is required,
+  // so skip saving while it's blank.
+  useEffect(() => {
+    const serialized = JSON.stringify(form)
+    if (serialized === savedRef.current) return
+    if (!form.name.trim()) return
     setSave('saving')
-    try {
-      const updated = await api.updatePart(form.id, form)
-      onUpdate(updated)
-      setSave('saved')
-      setTimeout(() => setSave('idle'), 2000)
-    } catch {
-      setSave('idle')
-    }
+    const t = setTimeout(async () => {
+      try {
+        const updated = await api.updatePart(form.id, form)
+        savedRef.current = serialized
+        onUpdate(updated)
+        setSave('saved')
+        setTimeout(() => setSave(s => (s === 'saved' ? 'idle' : s)), 1500)
+      } catch {
+        setSave('idle')
+      }
+    }, 600)
+    return () => clearTimeout(t)
   }, [form, onUpdate])
 
   async function handleDelete() {
@@ -305,10 +317,9 @@ export default function PartForm({ part, year, onUpdate, onDelete, onDuplicate }
       </>)}
 
       <div className="save-bar">
-        <button className="btn-primary" onClick={save} disabled={saveStatus === 'saving'}>
-          {saveStatus === 'saving' ? 'Saving…' : 'Save Part'}
-        </button>
-        {saveStatus === 'saved' && <span className="save-status saved">✓ Saved</span>}
+        <span className="save-status" style={{ color: 'var(--gray-500)', fontSize: 13 }}>
+          {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? '✓ Saved' : 'Changes save automatically'}
+        </span>
         <button className="btn-ghost" onClick={onDuplicate}>Duplicate Part</button>
         <button className="btn-danger" style={{ marginLeft: 'auto' }} onClick={() => setConfirm(true)}>Delete Part</button>
       </div>

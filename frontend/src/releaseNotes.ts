@@ -28,6 +28,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.11.0',
+    date: '2026-09-23',
+    title: 'Auto-save & clearer wording',
+    summary: 'Edits save as you go; quotes update on demand; "projects" are now "quotes".',
+    changes: [
+      { type: 'added', text: 'Changes now save automatically — no more Save button on the quote or part editors. A small “Saving… / Saved” indicator shows the status.' },
+      { type: 'changed', text: 'The quote itself stays frozen until you choose to update it: after editing inputs, the Quote tab shows an “Update quote” button (with a preview of the new total) instead of silently recomputing.' },
+      { type: 'changed', text: 'Renamed “Projects” to “Quotes” throughout (the thing you create is a quote). “Project Code” and its “Project Name” keep their names.' },
+      { type: 'fixed', text: 'Scrolling the mouse wheel over a number field no longer changes its value — it scrolls the page.' },
+    ],
+  },
+  {
     version: '1.10.3',
     date: '2026-09-16',
     title: 'Download & copy project codes',
