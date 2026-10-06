@@ -28,6 +28,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.12.0',
+    date: '2026-10-06',
+    title: 'Updated improvement roadmap (2026/2027/2028)',
+    summary: 'Projection years and improvement assumptions refreshed to the current targets.',
+    changes: [
+      { type: 'changed', text: 'Projection tiers are now 2026 / 2027 / 2028 (were 2026 / 2028 / 2030). Existing quotes with a retired year are moved into the new range automatically.' },
+      { type: 'changed', text: 'New robot run-time targets by 2028: forming −70% (75→250 mm/s), cutting −50% (2× speed); scanning keeps its prior curve. 2027 is the linear midpoint.' },
+      { type: 'changed', text: 'Trial-to-tolerance target: ~10 → under 4 trials on known materials by 2028 (−60%), with a midpoint at 2027.' },
+      { type: 'changed', text: 'Labor-hour assumptions are unchanged in value — just remapped onto the new tier years.' },
+    ],
+  },
+  {
     version: '1.11.0',
     date: '2026-09-23',
     title: 'Auto-save & clearer wording',

@@ -597,7 +597,7 @@ def compute_quote_result(p: dict, parts_data: list[dict]) -> dict:
     proj_inputs, part_inputs = _build_quote_inputs(p, parts_data)
     result = calc_project_quote(proj_inputs, part_inputs)
     year_prices = {}
-    for yr in [2026, 2028, 2030]:
+    for yr in [2026, 2027, 2028]:
         yr_inputs, _ = _build_quote_inputs({**p, "year_of_execution": yr}, parts_data)
         yr_result = calc_project_quote(yr_inputs, part_inputs)
         year_prices[yr] = {
@@ -718,7 +718,7 @@ def _apply_pricing(rates: dict, labor_era: str):
 
     patched_rates = dict(saved["HOURLY_RATES"])
     for k in ("Small", "Medium", "Large"):
-        patched_rates[k] = {2026: rates[k], 2028: rates[k], 2030: rates[k]}
+        patched_rates[k] = {2026: rates[k], 2027: rates[k], 2028: rates[k]}
     _calc.HOURLY_RATES = patched_rates
 
     if labor_era == "legacy":

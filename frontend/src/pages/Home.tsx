@@ -9,7 +9,7 @@ import ProjectCodeTab from '../components/ProjectCodeTab'
 
 type Section = 'projects' | 'devtools' | 'readme' | 'helpers' | 'projectcode' | 'releases' | 'admin'
 
-const YEARS = [2026, 2028, 2030]
+const YEARS = [2026, 2027, 2028]
 
 // Release-note change-type styling (pill background/text colors + label)
 const CHANGE_LABEL: Record<ChangeType, string> = {

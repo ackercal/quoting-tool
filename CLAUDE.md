@@ -43,11 +43,12 @@ npm run dev
 ## Pricing model
 All pricing constants live in `backend/calculations.py` (the runtime source of truth; the DB `constants` table is display-only). Two labor constant sets: **Formed Parts** (`formed_parts`) and **Custom Auto** (`custom_auto`).
 
-- **Projection tiers: 2026 / 2028 / 2030** (non-consecutive — the three assumption tiers were spread out; base + one-step + two-step). No interpolation between them.
+- **Projection tiers: 2026 / 2027 / 2028** (consecutive as of v1.12.0; were 2026/2028/2030). 2026 = baseline, 2028 = full improvement targets, 2027 = linear midpoint. No interpolation beyond the three tiers. Existing projects with an out-of-range year are clamped into the set on boot (`database.py`, idempotent; 2030→2028).
 - **Labor rates (flat across tiers):** RPE/ME $90.64, Tech $52.52, Purchaser $77.69, PM $84.17/hr.
 - **Robot cell rates** (Small/Medium/Large + a Custom override) change periodically — **read the current values from `HOURLY_RATES` in `calculations.py`**, don't trust a number cached here.
-- **Robot improvement factors:** forming/cutting 1.0 → 0.65 → 0.4225; scanning 1.0 → 0.75 → 0.50.
-- **Trial reduction:** 1.0 → 0.75 → 0.50 (applied to pre-IF/IF procedure counts, rounded up).
+- **Robot improvement factors** (× current-year run-time estimate): forming 1.0 → 0.65 → 0.30 (75→250 mm/s, −70% by 2028); cutting 1.0 → 0.75 → 0.50 (2× speed, −50%); scanning 1.0 → 0.75 → 0.50 (prior curve).
+- **Trial reduction:** 1.0 → 0.70 → 0.40 (avg ~10 trials → <4 on known materials by 2028, −60%; applied to pre-IF/IF procedure counts, rounded up).
+- **Labor-hour assumptions** (per-procedure RPE/ME/Tech, part-level and project-level hours) kept their prior values, just remapped onto the new tier years (old 2028→2027, old 2030→2028).
 
 ## Identity & access (Entra Easy Auth)
 - Users sign in with their Machina account; backend reads identity from Easy Auth headers (`main.py::_identity_from_request`, read-only on the request path — visit recording runs in a background task). Local dev falls back to `QUOTE_TOOL_DEV_USER_EMAIL`/`_NAME` env or `x-dev-user-email/name` headers.

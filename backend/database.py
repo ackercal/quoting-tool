@@ -258,6 +258,11 @@ def init_db():
         c.execute("UPDATE projects SET year_of_execution=2028 WHERE year_of_execution=2027")
         c.execute("PRAGMA user_version = 1")
 
+    # Projection tiers are now 2026 / 2027 / 2028 (was 2026 / 2028 / 2030). Pull any
+    # existing project year outside that set into range. Idempotent — safe every boot.
+    c.execute("UPDATE projects SET year_of_execution=2028 WHERE year_of_execution > 2028")
+    c.execute("UPDATE projects SET year_of_execution=2026 WHERE year_of_execution < 2026")
+
     _seed_constants(c)
     _seed_admin(c)
     conn.commit()
