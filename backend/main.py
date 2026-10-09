@@ -28,6 +28,7 @@ from calculations import (
     PALLETIZE_TECH_HRS,
     pricing_version,
     pricing_summary,
+    calc_lease_quote,
 )
 
 app = FastAPI(title="Quote Tool API")
@@ -172,6 +173,9 @@ class ProjectCreate(BaseModel):
     internal_notes: Optional[str] = None
     is_active: int = 1
     quote_status: str = "Open"  # 'Open' | 'Closed Won' | 'Not Used'
+    # business model: 'parts' (sell parts) | 'lease' (lease cells)
+    business_model: str = "parts"
+    lease_years: int = 3
     # authorship & visibility (author is set from identity on create;
     # author/access_tag are editable by an admin on update)
     author_email: Optional[str] = None
@@ -182,6 +186,16 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(ProjectCreate):
+    pass
+
+
+class LeaseItemCreate(BaseModel):
+    kind: str = "robot"               # 'robot' | 'laser'
+    robot_type: Optional[str] = None  # Small | Medium | Large (robot only)
+    quantity: int = 1
+
+
+class LeaseItemUpdate(LeaseItemCreate):
     pass
 
 
@@ -279,7 +293,7 @@ def list_projects(user: dict = Depends(current_user)):
             # No snapshot yet — show a live preview (created for real when the quote is opened).
             proj["quoted_price"] = None
             proj["pricing_stale"] = False
-            if proj["parts_count"]:
+            if proj["parts_count"] or proj.get("business_model") == "lease":
                 try:
                     _, parts_data = _load_project_and_parts(conn, proj["id"])
                     proj["quoted_price"] = compute_quote_result(proj, parts_data)["quoted_price"]
@@ -300,8 +314,9 @@ def create_project(data: ProjectCreate, user: dict = Depends(current_user)):
            (name,quantity_of_assemblies,material_type,ht_type,internal_margin,
             year_of_execution,assembly_pp_internal,assembly_pp_external,
             assembly_first_part_setup,setup_splitting_hrs,shipping_cost,osp_margin,
-            labor_constants,internal_notes,is_active,author_email,author_name,access_tag,project_code,quote_status)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            labor_constants,internal_notes,is_active,author_email,author_name,access_tag,project_code,quote_status,
+            business_model,lease_years)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
          data.internal_margin, data.year_of_execution, data.assembly_pp_internal,
          data.assembly_pp_external, data.assembly_first_part_setup,
@@ -309,7 +324,9 @@ def create_project(data: ProjectCreate, user: dict = Depends(current_user)):
          data.labor_constants, data.internal_notes,
          0 if data.quote_status == "Not Used" else 1,
          user["email"], user["display_name"], data.access_tag or "all", data.project_code,
-         data.quote_status or "Open"),
+         data.quote_status or "Open",
+         data.business_model if data.business_model in ("parts", "lease") else "parts",
+         max(int(data.lease_years or 3), 3)),
     )
     pid = c.lastrowid
     conn.commit()
@@ -333,8 +350,12 @@ def get_project(pid: int, user: dict = Depends(current_user)):
     parts = [row_to_dict(r) for r in conn.execute(
         "SELECT * FROM parts WHERE project_id=? ORDER BY sort_order, id", (pid,)
     ).fetchall()]
+    lease_items = [row_to_dict(r) for r in conn.execute(
+        "SELECT * FROM lease_items WHERE project_id=? ORDER BY sort_order, id", (pid,)
+    ).fetchall()]
     conn.close()
     project["parts"] = parts
+    project["lease_items"] = lease_items
     return project
 
 
@@ -367,6 +388,7 @@ def update_project(pid: int, data: ProjectUpdate, user: dict = Depends(current_u
            setup_splitting_hrs=?,shipping_cost=?,osp_margin=?,
            labor_constants=?,internal_notes=?,is_active=?,
            author_email=?,author_name=?,access_tag=?,project_code=?,quote_status=?,
+           business_model=?,lease_years=?,
            updated_at=datetime('now')
            WHERE id=?""",
         (data.name, data.quantity_of_assemblies, data.material_type, data.ht_type,
@@ -376,7 +398,9 @@ def update_project(pid: int, data: ProjectUpdate, user: dict = Depends(current_u
          data.labor_constants, data.internal_notes,
          0 if data.quote_status == "Not Used" else 1,
          author_email, author_name, access_tag, data.project_code,
-         data.quote_status or "Open", pid),
+         data.quote_status or "Open",
+         (data.business_model if data.business_model in ("parts", "lease") else existing["business_model"]),
+         max(int(data.lease_years or 3), 3), pid),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
@@ -550,6 +574,69 @@ def delete_part(part_id: int, user: dict = Depends(current_user)):
         _log_edit(pid, user, "Removed a part")
 
 
+# ── Lease items (cell-lease projects) ─────────────────────────────────────────
+@app.post("/projects/{pid}/lease-items", status_code=201)
+def create_lease_item(pid: int, data: LeaseItemCreate, user: dict = Depends(current_user)):
+    conn = get_conn()
+    if not conn.execute("SELECT 1 FROM projects WHERE id=?", (pid,)).fetchone():
+        conn.close()
+        raise HTTPException(404, "Project not found")
+    kind = data.kind if data.kind in ("robot", "laser") else "robot"
+    robot_type = data.robot_type if kind == "robot" else None
+    if kind == "robot" and robot_type not in ("Small", "Medium", "Large"):
+        robot_type = "Small"
+    nxt = conn.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM lease_items WHERE project_id=?", (pid,)).fetchone()[0]
+    c = conn.execute(
+        "INSERT INTO lease_items (project_id,kind,robot_type,quantity,sort_order) VALUES (?,?,?,?,?)",
+        (pid, kind, robot_type, max(int(data.quantity), 0), nxt),
+    )
+    item_id = c.lastrowid
+    conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (pid,))
+    conn.commit()
+    row = conn.execute("SELECT * FROM lease_items WHERE id=?", (item_id,)).fetchone()
+    conn.close()
+    _log_edit(pid, user, f"Added lease item ({kind})")
+    return row_to_dict(row)
+
+
+@app.put("/lease-items/{item_id}")
+def update_lease_item(item_id: int, data: LeaseItemUpdate, user: dict = Depends(current_user)):
+    conn = get_conn()
+    existing = conn.execute("SELECT * FROM lease_items WHERE id=?", (item_id,)).fetchone()
+    if not existing:
+        conn.close()
+        raise HTTPException(404, "Lease item not found")
+    kind = data.kind if data.kind in ("robot", "laser") else existing["kind"]
+    robot_type = data.robot_type if kind == "robot" else None
+    if kind == "robot" and robot_type not in ("Small", "Medium", "Large"):
+        robot_type = existing["robot_type"] if existing["robot_type"] in ("Small", "Medium", "Large") else "Small"
+    pid = existing["project_id"]
+    conn.execute(
+        "UPDATE lease_items SET kind=?,robot_type=?,quantity=? WHERE id=?",
+        (kind, robot_type, max(int(data.quantity), 0), item_id),
+    )
+    conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (pid,))
+    conn.commit()
+    row = conn.execute("SELECT * FROM lease_items WHERE id=?", (item_id,)).fetchone()
+    conn.close()
+    _log_edit(pid, user, "Edited lease item")
+    return row_to_dict(row)
+
+
+@app.delete("/lease-items/{item_id}", status_code=204)
+def delete_lease_item(item_id: int, user: dict = Depends(current_user)):
+    conn = get_conn()
+    row = conn.execute("SELECT project_id FROM lease_items WHERE id=?", (item_id,)).fetchone()
+    pid = row["project_id"] if row else None
+    if row:
+        conn.execute("DELETE FROM lease_items WHERE id=?", (item_id,))
+        conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (pid,))
+    conn.commit()
+    conn.close()
+    if pid is not None:
+        _log_edit(pid, user, "Removed lease item")
+
+
 # ── Quote calculation & snapshots ─────────────────────────────────────────────
 
 def _build_quote_inputs(p: dict, parts_data: list[dict]):
@@ -592,8 +679,26 @@ def _build_quote_inputs(p: dict, parts_data: list[dict]):
     return proj_inputs, part_inputs
 
 
+def _load_lease_items(pid: int) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM lease_items WHERE project_id=? ORDER BY sort_order, id", (pid,)
+        ).fetchall()
+        return [row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def compute_quote_result(p: dict, parts_data: list[dict]) -> dict:
     """Compute the full quote result live from the current pricing constants."""
+    if (p.get("business_model") or "parts") == "lease":
+        lease_items = _load_lease_items(p["id"])
+        result = calc_lease_quote(p, lease_items)
+        result["project"] = p
+        result["parts"] = []
+        result["lease_items"] = lease_items
+        return result
     proj_inputs, part_inputs = _build_quote_inputs(p, parts_data)
     result = calc_project_quote(proj_inputs, part_inputs)
     year_prices = {}
@@ -612,9 +717,24 @@ def compute_quote_result(p: dict, parts_data: list[dict]) -> dict:
     return result
 
 
-def _inputs_fingerprint(p: dict, parts_data: list[dict]) -> str:
-    """Stable hash of the quote-affecting inputs (project + parts). Used to detect when
-    a project's saved inputs have diverged from its active (frozen) quote snapshot."""
+def _inputs_fingerprint(p: dict, parts_data: list[dict], lease_items: Optional[list[dict]] = None) -> str:
+    """Stable hash of the quote-affecting inputs. Used to detect when a project's saved
+    inputs have diverged from its active (frozen) quote snapshot. For lease projects,
+    pass the snapshot's stored lease_items when hashing the frozen side."""
+    if (p.get("business_model") or "parts") == "lease":
+        items = lease_items if lease_items is not None else _load_lease_items(p["id"])
+        blob = {
+            "business_model": "lease",
+            "name": p.get("name"),
+            "project_code": p.get("project_code"),
+            "lease_years": int(p.get("lease_years") or 3),
+            "items": sorted(
+                [{"kind": it.get("kind"), "robot_type": it.get("robot_type"), "quantity": int(it.get("quantity") or 0)}
+                 for it in items],
+                key=lambda x: (x["kind"], x["robot_type"] or "", x["quantity"]),
+            ),
+        }
+        return hashlib.sha256(json.dumps(blob, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
     proj_inputs, part_inputs = _build_quote_inputs(p, parts_data)
     blob = {
         "project": dataclasses.asdict(proj_inputs),
@@ -854,7 +974,7 @@ def get_quote(pid: int, user: dict = Depends(current_user)):
     inputs_stale = False
     if frozen_proj is not None and frozen_parts is not None:
         try:
-            inputs_stale = _inputs_fingerprint(p, parts_data) != _inputs_fingerprint(frozen_proj, frozen_parts)
+            inputs_stale = _inputs_fingerprint(p, parts_data) != _inputs_fingerprint(frozen_proj, frozen_parts, frozen.get("lease_items"))
         except Exception:
             inputs_stale = False
 
@@ -862,12 +982,20 @@ def get_quote(pid: int, user: dict = Depends(current_user)):
     # (for the "was X, now Y" comparison), without saving it.
     if stale or inputs_stale:
         preview = compute_quote_result(p, parts_data)
-        frozen["current_preview"] = {
-            "quoted_price":         preview["quoted_price"],
-            "first_assembly_price": preview["first_assembly_price"],
-            "dup_assembly_price":   preview["dup_assembly_price"],
-            "year_prices":          preview["year_prices"],
-        }
+        if (p.get("business_model") or "parts") == "lease":
+            frozen["current_preview"] = {
+                "quoted_price":   preview["quoted_price"],
+                "total_contract": preview.get("total_contract"),
+                "annual_total":   preview.get("annual_total"),
+                "setup_total":    preview.get("setup_total"),
+            }
+        else:
+            frozen["current_preview"] = {
+                "quoted_price":         preview["quoted_price"],
+                "first_assembly_price": preview["first_assembly_price"],
+                "dup_assembly_price":   preview["dup_assembly_price"],
+                "year_prices":          preview["year_prices"],
+            }
     conn.close()
 
     frozen["snapshot"] = _snapshot_meta(active)

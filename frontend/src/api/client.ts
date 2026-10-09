@@ -1,4 +1,4 @@
-import type { Project, Part, QuoteResult, Constant, Me, AppUser, Snapshot, PriceHistoryRow, ProjectEdit } from '../types';
+import type { Project, Part, LeaseItem, QuoteResult, Constant, Me, AppUser, Snapshot, PriceHistoryRow, ProjectEdit } from '../types';
 
 const BASE = '/api';
 
@@ -35,6 +35,14 @@ export const api = {
     req<Part>(`/parts/${partId}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePart: (partId: number) =>
     req<void>(`/parts/${partId}`, { method: 'DELETE' }),
+
+  // Lease items (cell-lease projects)
+  createLeaseItem: (projectId: number, data: Partial<LeaseItem>) =>
+    req<LeaseItem>(`/projects/${projectId}/lease-items`, { method: 'POST', body: JSON.stringify(data) }),
+  updateLeaseItem: (itemId: number, data: Partial<LeaseItem>) =>
+    req<LeaseItem>(`/lease-items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteLeaseItem: (itemId: number) =>
+    req<void>(`/lease-items/${itemId}`, { method: 'DELETE' }),
 
   // Quote
   getQuote: (projectId: number) => req<QuoteResult>(`/projects/${projectId}/quote`),

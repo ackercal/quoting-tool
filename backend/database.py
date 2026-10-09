@@ -46,9 +46,25 @@ def init_db():
         project_code            TEXT,
         -- per-quote status: 'Open' | 'Closed Won' | 'Not Used' (upgrades is_active)
         quote_status            TEXT    NOT NULL DEFAULT 'Open',
+        -- business model: 'parts' (sell parts, default) | 'lease' (lease cells)
+        business_model          TEXT    NOT NULL DEFAULT 'parts',
+        -- lease length in whole years (lease model only; min 3)
+        lease_years             INTEGER NOT NULL DEFAULT 3,
         created_at              TEXT    DEFAULT (datetime('now')),
         updated_at              TEXT    DEFAULT (datetime('now'))
     );
+
+    -- Leased items for a 'lease' project (RoboCraftsman cells + laser welding).
+    CREATE TABLE IF NOT EXISTS lease_items (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        kind        TEXT    NOT NULL DEFAULT 'robot',   -- 'robot' | 'laser'
+        robot_type  TEXT,                               -- Small | Medium | Large (robot only)
+        quantity    INTEGER NOT NULL DEFAULT 1,
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT    DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_lease_items_project ON lease_items(project_id);
 
     CREATE TABLE IF NOT EXISTS parts (
         id                          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -240,6 +256,9 @@ def init_db():
         # Per-quote status (upgrades is_active): add column, map inactive -> Not Used.
         "ALTER TABLE projects ADD COLUMN quote_status TEXT NOT NULL DEFAULT 'Open'",
         "UPDATE projects SET quote_status='Not Used' WHERE is_active=0 AND quote_status='Open'",
+        # Business model + lease length (v1.13 — cell-lease quotes)
+        "ALTER TABLE projects ADD COLUMN business_model TEXT NOT NULL DEFAULT 'parts'",
+        "ALTER TABLE projects ADD COLUMN lease_years INTEGER NOT NULL DEFAULT 3",
     ]:
         try:
             c.execute(migration)

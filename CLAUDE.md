@@ -73,6 +73,15 @@ A project-code registry that lives in the app's own SQLite, **diverged from the 
 - **Credentials:** `DATABRICKS_HOST` / `DATABRICKS_TOKEN` / `DATABRICKS_CLUSTER_ID` from env, else `backend/sf_config.local.json` (gitignored — token never committed). **`databricks-sdk` is in requirements.txt.** In **prod these three must be set as App Service settings** or the Salesforce features return 503 (the app still boots and internal/typed-custom codes still work). Fresh prod DB is empty of codes → an admin uses the one-time "Import existing codes" banner to seed the baseline.
 - **Quote integration:** a project (quote) has an optional `project_code` link (first field in the project detail; picking it fills read-only Account/Project Name) and its own `quote_status` (**Open / Closed Won / Not Used**, upgraded from is_active), shown as a home-card pill with filters. The project's `name` is the **Quote Name**. `list_projects` returns `code_customer`/`code_project_name` for the home-card subtext.
 
+## Cell-lease quotes (v1.13.0)
+A second business model alongside the parts quote. A project has `business_model` ('parts' default | 'lease') and `lease_years` (min 3); lease line items live in the `lease_items` table (kind 'robot'|'laser', robot_type, quantity). New Quote asks the model first. Lease projects have a single "Cell Lease" level (no parts hierarchy) rendered by `LeaseForm`; the quote by `LeaseQuoteView` / `LeaseQuotePDFContent`.
+
+- **Pricing is all prices, no margin** (`calc_lease_quote` in `calculations.py`). Each RoboCraftsman cell: one-time setup `LEASE_ROBOT_SETUP` ($44,130) + annual from `LEASE_ROBOT_ANNUAL[type][tier]`. Tier is chosen from the **total RoboCraftsman cell count** (1-4 / 5-8 / 9-14 / 15+) — laser welding does not count toward the tier. Laser welding: setup `LEASE_LASER_SETUP` ($22,065) + annual `LEASE_LASER_ANNUAL` ($27,949).
+- **5% multi-year discount** on each cell's *annual* price (not setup) when `lease_years >= 5` (both robots and laser). Surfaced explicitly on the quote + PDF.
+- **Totals:** `total_contract = setup_total + annual_total × years`; a per-year schedule (year 1 = setup + annual, years 2..N = annual). Headline `quoted_price` = total contract (also the home-card number).
+- **Snapshot/freeze** works the same as parts: `compute_quote_result` branches on business_model; `_inputs_fingerprint` hashes lease inputs (years + items); editing inputs flags the quote `inputs_stale` → "Update quote" regenerates. `get_quote`'s preview block is lease-aware.
+- Lease item CRUD: `POST /projects/{id}/lease-items`, `PUT /lease-items/{id}`, `DELETE /lease-items/{id}`. `get_project` returns `lease_items`.
+
 ## Azure hosting & monitoring
 - **Cloud:** Azure US Government (`.azurewebsites.us`), sub `071e310d-bae1-4e39-af2a-8e76d0373492`, RG `quoting-tool-rg`, region USGov Virginia. `az` CLI works from WSL2 (already authed to `AzureUSGovernment`).
 - **Metric alerts:** `quoting-tool-5xx-errors` (fires on a *single* Http5xx over 5 min), `quoting-tool-4xx-errors`, `quoting-tool-slow-response`, `quoting-tool-app-stopped`. Action group `quoting-tool-alerts`.

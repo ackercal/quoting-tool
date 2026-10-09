@@ -13,7 +13,7 @@ const PICKABLE_STATUSES = new Set(['Discovery', 'Internal'])
 // Project-code picker with one search bar that matches across code, customer,
 // and project name (same as the Project Code List search). Only open codes
 // (Discovery / Closed Won / Internal) are selectable.
-function ProjectCodeSelect({ codes, value, onSelect }: {
+export function ProjectCodeSelect({ codes, value, onSelect }: {
   codes: ProjectCode[]; value: string | null; onSelect: (c: ProjectCode | null) => void
 }) {
   const [open, setOpen] = useState(false)

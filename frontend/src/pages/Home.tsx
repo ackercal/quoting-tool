@@ -265,6 +265,7 @@ export default function Home() {
   const [loading, setLoading]   = useState(true)
   const [showNew, setShowNew]       = useState(false)
   const [newName, setNewName]       = useState('')
+  const [newModel, setNewModel]     = useState<'parts' | 'lease'>('parts')
   const [creating, setCreating]     = useState(false)
   const [openMenu, setOpenMenu]     = useState<number | null>(null)
   const [duplicating, setDuplicating] = useState<number | null>(null)
@@ -336,7 +337,7 @@ export default function Home() {
     if (!newName.trim()) return
     setCreating(true)
     try {
-      const proj = await api.createProject({ name: newName.trim() })
+      const proj = await api.createProject({ name: newName.trim(), business_model: newModel })
       navigate(`/projects/${proj.id}`)
     } finally {
       setCreating(false)
@@ -555,7 +556,7 @@ export default function Home() {
                 <div className="home-title">Quotes</div>
                 <div className="home-subtitle">Select a quote or create a new one</div>
               </div>
-              <button className="btn-primary" onClick={() => setShowNew(true)}>
+              <button className="btn-primary" onClick={() => { setNewName(''); setNewModel('parts'); setShowNew(true) }}>
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
@@ -1147,13 +1148,32 @@ export default function Home() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">New Quote</div>
             <div className="field">
+              <label>Business model <span className="required">*</span></label>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                {([
+                  ['parts', 'Selling parts', 'Quote formed parts & assemblies'],
+                  ['lease', 'Leasing cells', 'Quote a RoboCraftsman cell lease'],
+                ] as const).map(([val, title, sub]) => (
+                  <div key={val} onClick={() => setNewModel(val)}
+                    style={{
+                      flex: 1, padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
+                      border: `1.5px solid ${newModel === val ? 'var(--orange, #FF9900)' : 'var(--gray-300)'}`,
+                      background: newModel === val ? 'rgba(255,153,0,0.08)' : '#fff',
+                    }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--gray-900)' }}>{title}</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{sub}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="field">
               <label>Quote Name <span className="required">*</span></label>
               <input
                 autoFocus
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                placeholder="e.g. JASSM Fuel Tank"
+                placeholder={newModel === 'lease' ? 'e.g. Acme Edge Factory Lease' : 'e.g. JASSM Fuel Tank'}
               />
             </div>
             <div className="modal-actions">

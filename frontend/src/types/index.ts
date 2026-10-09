@@ -25,9 +25,41 @@ export interface Project {
   parts_count?: number;
   quoted_price?: number | null;
   pricing_stale?: boolean;
+  business_model?: 'parts' | 'lease';
+  lease_years?: number;
+  lease_items?: LeaseItem[];
   created_at: string;
   updated_at: string;
   parts?: Part[];
+}
+
+export interface LeaseItem {
+  id: number;
+  project_id: number;
+  kind: 'robot' | 'laser';
+  robot_type: 'Small' | 'Medium' | 'Large' | null;
+  quantity: number;
+  sort_order: number;
+}
+
+export interface LeaseLine {
+  kind: 'robot' | 'laser';
+  robot_type: string | null;
+  label: string;
+  quantity: number;
+  tier: string | null;
+  annual_each_base: number;
+  annual_each: number;
+  setup_each: number;
+  annual_line: number;
+  setup_line: number;
+}
+
+export interface LeaseYear {
+  year: number;
+  setup: number;
+  annual: number;
+  total: number;
 }
 
 export interface Me {
@@ -188,6 +220,21 @@ export interface QuoteResult {
   snapshot?: Snapshot;
   stale?: boolean;
   inputs_stale?: boolean;
+  // ── Cell-lease quote fields (present when business_model === 'lease') ──
+  business_model?: 'parts' | 'lease';
+  total_contract?: number;
+  lease_years?: number;
+  total_cells?: number;
+  cell_tier?: string;
+  discount_applied?: boolean;
+  discount_pct?: number;
+  setup_total?: number;
+  annual_total?: number;
+  annual_undiscounted?: number;
+  annual_savings?: number;
+  line_items?: LeaseLine[];
+  year_schedule?: LeaseYear[];
+  lease_items?: LeaseItem[];
   current_pricing_summary?: string;
   current_pricing_version?: string;
   current_preview?: {

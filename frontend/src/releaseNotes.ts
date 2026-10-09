@@ -28,6 +28,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.13.0',
+    date: '2026-10-09',
+    title: 'Cell lease quotes',
+    summary: 'A new quote type for leasing RoboCraftsman cells, alongside the parts quote.',
+    changes: [
+      { type: 'added', text: 'New Quote now asks the business model: “Selling parts” (the existing quote) or “Leasing cells” (a new cell-lease quote).' },
+      { type: 'added', text: 'Cell-lease quotes have a single Cell Lease level: lease length (min 3 years), RoboCraftsman cells (add a robot type + quantity, mix sizes freely), and optional laser welding.' },
+      { type: 'added', text: 'Lease pricing: each cell has a one-time setup + annual lease price; the annual robot price uses the total-cells volume tier (1-4, 5-8, 9-14, 15+). Leases of 5+ years get a 5% discount on every cell’s annual price (shown clearly on the quote and PDF). The quote shows the total contract price and the annual cost per year.' },
+    ],
+  },
+  {
     version: '1.12.0',
     date: '2026-10-06',
     title: 'Updated improvement roadmap (2026/2027/2028)',

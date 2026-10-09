@@ -672,6 +672,123 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
     }
 
 
+# ── Cell-lease pricing (Edge Factory) ─────────────────────────────────────────
+# All values below are PRICES (not costs) — no margin is applied to a lease quote.
+LEASE_MIN_YEARS          = 3     # minimum lease length (whole years)
+LEASE_LONGTERM_YEARS     = 5     # lease length at/above which the multi-year discount applies
+LEASE_LONGTERM_DISCOUNT  = 0.05  # 5% off the ANNUAL price of each cell (not the one-time setup)
+
+# Annual lease price per RoboCraftsman cell, by robot type and total-cells volume tier.
+# The tier is chosen from the TOTAL number of RoboCraftsman cells on the lease.
+LEASE_ROBOT_ANNUAL: dict[str, dict[str, float]] = {
+    "Small":  {"1-4": 801082, "5-8": 657345, "9-14": 606050, "15+": 574549},
+    "Medium": {"1-4": 858224, "5-8": 714487, "9-14": 663193, "15+": 631692},
+    "Large":  {"1-4": 1058224, "5-8": 914487, "9-14": 863193, "15+": 831692},
+}
+LEASE_ROBOT_SETUP = 44130   # one-time install & training, per RoboCraftsman cell
+LEASE_LASER_ANNUAL = 27949  # annual lease, per laser welding cell (Model TBD)
+LEASE_LASER_SETUP  = 22065  # one-time install & training, per laser welding cell
+
+ROBOT_TYPE_LABELS = {
+    "Small":  "Small (KR500, M900)",
+    "Medium": "Medium (KR1500, M1000)",
+    "Large":  "Large (M2000)",
+}
+
+
+def lease_cell_tier(total_cells: int) -> str:
+    """Volume tier from the total number of RoboCraftsman cells on the lease."""
+    if total_cells >= 15:
+        return "15+"
+    if total_cells >= 9:
+        return "9-14"
+    if total_cells >= 5:
+        return "5-8"
+    return "1-4"
+
+
+def calc_lease_quote(project: dict, lease_items: list[dict]) -> dict:
+    """Compute a cell-lease quote. `lease_items` are rows with kind ('robot'|'laser'),
+    robot_type (for robots) and quantity. Returns total contract price, one-time setup,
+    recurring annual, the per-item breakdown, and a per-year schedule."""
+    years = int(project.get("lease_years") or LEASE_MIN_YEARS)
+    if years < LEASE_MIN_YEARS:
+        years = LEASE_MIN_YEARS
+
+    robots = [it for it in lease_items if it.get("kind") == "robot" and int(it.get("quantity") or 0) > 0]
+    lasers = [it for it in lease_items if it.get("kind") == "laser" and int(it.get("quantity") or 0) > 0]
+
+    total_cells = sum(int(it["quantity"]) for it in robots)
+    tier = lease_cell_tier(total_cells)
+    discount = LEASE_LONGTERM_DISCOUNT if years >= LEASE_LONGTERM_YEARS else 0.0
+    factor = 1.0 - discount
+
+    lines: list[dict] = []
+    setup_total = 0.0
+    annual_total = 0.0
+    annual_undiscounted = 0.0
+
+    for it in robots:
+        qty = int(it["quantity"])
+        rtype = it.get("robot_type") or "Small"
+        base = LEASE_ROBOT_ANNUAL.get(rtype, LEASE_ROBOT_ANNUAL["Small"])[tier]
+        annual_each = base * factor
+        lines.append({
+            "kind": "robot", "robot_type": rtype,
+            "label": f"RoboCraftsman - {ROBOT_TYPE_LABELS.get(rtype, rtype)}",
+            "quantity": qty, "tier": tier,
+            "annual_each_base": base, "annual_each": annual_each,
+            "setup_each": LEASE_ROBOT_SETUP,
+            "annual_line": annual_each * qty, "setup_line": LEASE_ROBOT_SETUP * qty,
+        })
+        setup_total += LEASE_ROBOT_SETUP * qty
+        annual_total += annual_each * qty
+        annual_undiscounted += base * qty
+
+    for it in lasers:
+        qty = int(it["quantity"])
+        annual_each = LEASE_LASER_ANNUAL * factor
+        lines.append({
+            "kind": "laser", "robot_type": None,
+            "label": "Laser Welding",
+            "quantity": qty, "tier": None,
+            "annual_each_base": LEASE_LASER_ANNUAL, "annual_each": annual_each,
+            "setup_each": LEASE_LASER_SETUP,
+            "annual_line": annual_each * qty, "setup_line": LEASE_LASER_SETUP * qty,
+        })
+        setup_total += LEASE_LASER_SETUP * qty
+        annual_total += annual_each * qty
+        annual_undiscounted += LEASE_LASER_ANNUAL * qty
+
+    total_contract = setup_total + annual_total * years
+    year_schedule = [
+        {
+            "year": y,
+            "setup":  setup_total if y == 1 else 0.0,
+            "annual": annual_total,
+            "total":  (setup_total if y == 1 else 0.0) + annual_total,
+        }
+        for y in range(1, years + 1)
+    ]
+
+    return {
+        "business_model":      "lease",
+        "quoted_price":        total_contract,   # headline number (total contract)
+        "total_contract":      total_contract,
+        "lease_years":         years,
+        "total_cells":         total_cells,
+        "cell_tier":           tier,
+        "discount_applied":    discount > 0,
+        "discount_pct":        discount,
+        "setup_total":         setup_total,
+        "annual_total":        annual_total,
+        "annual_undiscounted": annual_undiscounted,
+        "annual_savings":      annual_undiscounted - annual_total,
+        "line_items":          lines,
+        "year_schedule":       year_schedule,
+    }
+
+
 # ── Pricing version fingerprint ───────────────────────────────────────────────
 # A content hash of every constant that affects a quote. It changes automatically
 # whenever any rate / labor-hour / factor changes, so snapshots can detect when a
@@ -685,6 +802,11 @@ def _pricing_constants_blob() -> dict:
         "labor":             LABOR_HOURS_SETS,
         "part_hours":         PART_HOURS_SETS,
         "project_hours":     PROJECT_HOURS,
+        "lease": {
+            "robot_annual": LEASE_ROBOT_ANNUAL, "robot_setup": LEASE_ROBOT_SETUP,
+            "laser_annual": LEASE_LASER_ANNUAL, "laser_setup": LEASE_LASER_SETUP,
+            "longterm_years": LEASE_LONGTERM_YEARS, "longterm_discount": LEASE_LONGTERM_DISCOUNT,
+        },
     }
 
 

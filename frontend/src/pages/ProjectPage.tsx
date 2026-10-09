@@ -5,6 +5,8 @@ import type { Project, Part } from '../types'
 import ProjectForm from '../components/ProjectForm'
 import PartForm from '../components/PartForm'
 import QuoteView from '../components/QuoteView'
+import LeaseForm from '../components/LeaseForm'
+import LeaseQuoteView from '../components/LeaseQuoteView'
 import { partDisplayName } from '../utils/manufacturing'
 
 type Selection = { type: 'project' } | { type: 'part'; id: number } | { type: 'quote' }
@@ -143,6 +145,7 @@ export default function ProjectPage() {
   if (!project) return <div style={{ padding: 32 }}>Quote not found.</div>
 
   const activePartId = sel.type === 'part' ? sel.id : null
+  const isLease = project.business_model === 'lease'
 
   return (
     <div className="project-layout">
@@ -170,8 +173,8 @@ export default function ProjectPage() {
             <span>{project.name}</span>
           </div>
 
-          {/* Parts */}
-          {parts.map(p => (
+          {/* Parts (hidden for cell-lease quotes — they have a single Cell Lease level) */}
+          {!isLease && parts.map(p => (
             <div
               key={p.id}
               className={`sidebar-item${activePartId === p.id ? ' active' : ''}`}
@@ -215,10 +218,12 @@ export default function ProjectPage() {
           ))}
 
           {/* Add part */}
-          <div className="sidebar-new-part" onClick={addPart}>
-            <IconPlus />
-            <span>New Part</span>
-          </div>
+          {!isLease && (
+            <div className="sidebar-new-part" onClick={addPart}>
+              <IconPlus />
+              <span>New Part</span>
+            </div>
+          )}
 
           {/* Quote button — inline, after parts */}
           <div className="sidebar-divider" style={{ margin: '16px 0' }} />
@@ -237,15 +242,17 @@ export default function ProjectPage() {
       {/* ── Main content ── */}
       <div className="project-main">
         {sel.type === 'project' && (
-          <ProjectForm project={project} onUpdate={handleProjectUpdate} />
+          isLease
+            ? <LeaseForm project={project} onUpdate={handleProjectUpdate} />
+            : <ProjectForm project={project} onUpdate={handleProjectUpdate} />
         )}
-        {sel.type === 'part' && (() => {
+        {sel.type === 'part' && !isLease && (() => {
           const part = parts.find(p => p.id === (sel as { type: 'part'; id: number }).id)
           return part
             ? <PartForm part={part} year={project.year_of_execution} onUpdate={handlePartUpdate} onDelete={handlePartDelete} onDuplicate={() => duplicatePart(part)} />
             : <div className="content-area"><p>Part not found.</p></div>
         })()}
-        {sel.type === 'quote' && <QuoteView projectId={projectId} />}
+        {sel.type === 'quote' && (isLease ? <LeaseQuoteView projectId={projectId} /> : <QuoteView projectId={projectId} />)}
       </div>
 
       {/* ── Notes panel ── */}
