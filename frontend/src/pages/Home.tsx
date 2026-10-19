@@ -1152,7 +1152,7 @@ export default function Home() {
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 {([
                   ['parts', 'Selling parts', 'Quote formed parts & assemblies'],
-                  ['lease', 'Leasing cells', 'Quote a RoboCraftsman cell lease'],
+                  ['lease', 'Edge Factory', 'Lease RoboCraftsman cells & laser welding'],
                 ] as const).map(([val, title, sub]) => (
                   <div key={val} onClick={() => setNewModel(val)}
                     style={{

@@ -28,6 +28,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.13.1',
+    date: '2026-10-19',
+    title: 'Edge Factory quote polish',
+    summary: 'Renamed the lease quote to “Edge Factory” and added a unit-price line-item table.',
+    changes: [
+      { type: 'changed', text: 'The “Leasing cells” quote type is now called “Edge Factory.”' },
+      { type: 'changed', text: 'Edge Factory quote (and PDF) now shows a line-item table with unit price, quantity, term, annual fee, and lease total — each cell split into a Subscription and an Installation & Training line.' },
+    ],
+  },
+  {
     version: '1.13.0',
     date: '2026-10-09',
     title: 'Cell lease quotes',

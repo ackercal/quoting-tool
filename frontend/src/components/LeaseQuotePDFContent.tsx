@@ -1,5 +1,6 @@
 import type { QuoteResult } from '../types'
 import LeaseYearChart from './LeaseYearChart'
+import { leaseLineRows } from './leaseRows'
 
 interface Props { quote: QuoteResult }
 
@@ -10,8 +11,8 @@ const td: React.CSSProperties = { padding: '9px 16px', fontSize: 13, borderBotto
 
 export default function LeaseQuotePDFContent({ quote }: Props) {
   const years = quote.lease_years ?? 0
-  const lines = quote.line_items ?? []
   const schedule = quote.year_schedule ?? []
+  const rows = leaseLineRows(quote)
 
   return (
     <div style={{ fontFamily: "'Roboto', sans-serif", background: '#fff', color: '#191919', width: 800, padding: 0 }}>
@@ -22,7 +23,7 @@ export default function LeaseQuotePDFContent({ quote }: Props) {
           <div style={{ fontSize: 22, fontWeight: 700, color: '#FCFCFC' }}>{quote.project.name}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, color: 'rgba(252,252,252,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Cell Lease Quote</div>
+          <div style={{ fontSize: 11, color: 'rgba(252,252,252,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Edge Factory Quote</div>
           <div style={{ fontSize: 13, color: 'rgba(252,252,252,0.75)' }}>{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
         </div>
       </div>
@@ -70,32 +71,33 @@ export default function LeaseQuotePDFContent({ quote }: Props) {
           <LeaseYearChart schedule={schedule} />
         </div>
 
-        {/* Leased items */}
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12 }}>Leased Items</div>
+        {/* Line-item pricing (finance "Edge Factory" format) */}
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12 }}>Quote Detail</div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#F5F5F5' }}>
               <th style={{ ...th, textAlign: 'left' }}>Item</th>
+              <th style={{ ...th, textAlign: 'right' }}>Unit Price</th>
               <th style={{ ...th, textAlign: 'right' }}>Qty</th>
-              <th style={{ ...th, textAlign: 'right' }}>Setup</th>
-              <th style={{ ...th, textAlign: 'right' }}>Annual</th>
-              <th style={{ ...th, textAlign: 'right' }}>Total</th>
+              <th style={{ ...th, textAlign: 'center' }}>Term</th>
+              <th style={{ ...th, textAlign: 'right' }}>Annual Fee</th>
+              <th style={{ ...th, textAlign: 'right' }}>Lease Total</th>
             </tr>
           </thead>
           <tbody>
-            {lines.map((l, i) => (
+            {rows.map((r, i) => (
               <tr key={i}>
-                <td style={td}>{l.label}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{l.quantity}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{$(l.setup_line)}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{$(l.annual_line)}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{$(l.setup_line + l.annual_line * years)}</td>
+                <td style={{ ...td, fontWeight: 600 }}>{r.item}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{$(r.unit)}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{r.quantity}</td>
+                <td style={{ ...td, textAlign: 'center' }}>{r.term}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{r.annualFee == null ? '—' : $(r.annualFee)}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{$(r.leaseTotal)}</td>
               </tr>
             ))}
             <tr style={{ background: '#F5F5F5' }}>
-              <td style={{ ...td, fontWeight: 700 }}>Totals</td>
-              <td style={td} />
-              <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{$(quote.setup_total ?? 0)}</td>
+              <td style={{ ...td, fontWeight: 700 }}>Total</td>
+              <td style={td} /><td style={td} /><td style={td} />
               <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{$(quote.annual_total ?? 0)}</td>
               <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#FF9900' }}>{$(quote.total_contract ?? 0)}</td>
             </tr>
