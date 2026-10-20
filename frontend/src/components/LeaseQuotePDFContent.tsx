@@ -33,7 +33,7 @@ export default function LeaseQuotePDFContent({ quote }: Props) {
         {[
           ['Lease Length', `${years} years`],
           ['RoboCraftsman Cells', `${quote.total_cells ?? 0}${quote.cell_tier ? ` (${quote.cell_tier} tier)` : ''}`],
-          ['Multi-year Discount', quote.discount_applied ? '5% (5+ years)' : 'None'],
+          ...(quote.discount_applied ? [['Multi-year Discount', '5% (5+ years)']] : []),
         ].map(([label, value]) => (
           <div key={label}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6B6B6B', marginBottom: 2 }}>{label}</div>
