@@ -707,10 +707,12 @@ def lease_cell_tier(total_cells: int) -> str:
     return "1-4"
 
 
-def calc_lease_quote(project: dict, lease_items: list[dict]) -> dict:
+def calc_lease_quote(project: dict, lease_items: list[dict], lease_misc: list[dict] | None = None) -> dict:
     """Compute a cell-lease quote. `lease_items` are rows with kind ('robot'|'laser'),
-    robot_type (for robots) and quantity. Returns total contract price, one-time setup,
-    recurring annual, the per-item breakdown, and a per-year schedule."""
+    robot_type (for robots) and quantity. `lease_misc` are additional priced items with
+    name + setup_price + annual_price (PRICES, no discount). Returns total contract price,
+    one-time setup, recurring annual, the per-item breakdown, and a per-year schedule."""
+    lease_misc = lease_misc or []
     years = int(project.get("lease_years") or LEASE_MIN_YEARS)
     if years < LEASE_MIN_YEARS:
         years = LEASE_MIN_YEARS
@@ -759,6 +761,24 @@ def calc_lease_quote(project: dict, lease_items: list[dict]) -> dict:
         setup_total += LEASE_LASER_SETUP * qty
         annual_total += annual_each * qty
         annual_undiscounted += LEASE_LASER_ANNUAL * qty
+
+    # Additional misc priced items (no volume tier, no multi-year discount).
+    for m in lease_misc:
+        setup = float(m.get("setup_price") or 0)
+        annual = float(m.get("annual_price") or 0)
+        if setup == 0 and annual == 0:
+            continue
+        lines.append({
+            "kind": "misc", "robot_type": None,
+            "label": (m.get("name") or "Additional item").strip() or "Additional item",
+            "quantity": 1, "tier": None,
+            "annual_each_base": annual, "annual_each": annual,
+            "setup_each": setup,
+            "annual_line": annual, "setup_line": setup,
+        })
+        setup_total += setup
+        annual_total += annual
+        annual_undiscounted += annual
 
     total_contract = setup_total + annual_total * years
     year_schedule = [

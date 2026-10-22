@@ -199,6 +199,16 @@ class LeaseItemUpdate(LeaseItemCreate):
     pass
 
 
+class LeaseMiscCreate(BaseModel):
+    name: str = ""
+    setup_price: float = 0
+    annual_price: float = 0
+
+
+class LeaseMiscUpdate(LeaseMiscCreate):
+    pass
+
+
 class AccessUpdate(BaseModel):
     access_scope: str
 
@@ -353,9 +363,13 @@ def get_project(pid: int, user: dict = Depends(current_user)):
     lease_items = [row_to_dict(r) for r in conn.execute(
         "SELECT * FROM lease_items WHERE project_id=? ORDER BY sort_order, id", (pid,)
     ).fetchall()]
+    lease_misc = [row_to_dict(r) for r in conn.execute(
+        "SELECT * FROM lease_misc WHERE project_id=? ORDER BY sort_order, id", (pid,)
+    ).fetchall()]
     conn.close()
     project["parts"] = parts
     project["lease_items"] = lease_items
+    project["lease_misc"] = lease_misc
     return project
 
 
@@ -637,6 +651,61 @@ def delete_lease_item(item_id: int, user: dict = Depends(current_user)):
         _log_edit(pid, user, "Removed lease item")
 
 
+# ── Lease misc priced items ───────────────────────────────────────────────────
+@app.post("/projects/{pid}/lease-misc", status_code=201)
+def create_lease_misc(pid: int, data: LeaseMiscCreate, user: dict = Depends(current_user)):
+    conn = get_conn()
+    if not conn.execute("SELECT 1 FROM projects WHERE id=?", (pid,)).fetchone():
+        conn.close()
+        raise HTTPException(404, "Project not found")
+    nxt = conn.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM lease_misc WHERE project_id=?", (pid,)).fetchone()[0]
+    c = conn.execute(
+        "INSERT INTO lease_misc (project_id,name,setup_price,annual_price,sort_order) VALUES (?,?,?,?,?)",
+        (pid, (data.name or "").strip(), max(float(data.setup_price), 0), max(float(data.annual_price), 0), nxt),
+    )
+    mid = c.lastrowid
+    conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (pid,))
+    conn.commit()
+    row = conn.execute("SELECT * FROM lease_misc WHERE id=?", (mid,)).fetchone()
+    conn.close()
+    _log_edit(pid, user, "Added misc price item")
+    return row_to_dict(row)
+
+
+@app.put("/lease-misc/{mid}")
+def update_lease_misc(mid: int, data: LeaseMiscUpdate, user: dict = Depends(current_user)):
+    conn = get_conn()
+    existing = conn.execute("SELECT * FROM lease_misc WHERE id=?", (mid,)).fetchone()
+    if not existing:
+        conn.close()
+        raise HTTPException(404, "Misc item not found")
+    pid = existing["project_id"]
+    conn.execute(
+        "UPDATE lease_misc SET name=?,setup_price=?,annual_price=? WHERE id=?",
+        ((data.name or "").strip(), max(float(data.setup_price), 0), max(float(data.annual_price), 0), mid),
+    )
+    conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (pid,))
+    conn.commit()
+    row = conn.execute("SELECT * FROM lease_misc WHERE id=?", (mid,)).fetchone()
+    conn.close()
+    _log_edit(pid, user, "Edited misc price item")
+    return row_to_dict(row)
+
+
+@app.delete("/lease-misc/{mid}", status_code=204)
+def delete_lease_misc(mid: int, user: dict = Depends(current_user)):
+    conn = get_conn()
+    row = conn.execute("SELECT project_id FROM lease_misc WHERE id=?", (mid,)).fetchone()
+    pid = row["project_id"] if row else None
+    if row:
+        conn.execute("DELETE FROM lease_misc WHERE id=?", (mid,))
+        conn.execute("UPDATE projects SET updated_at=datetime('now') WHERE id=?", (pid,))
+    conn.commit()
+    conn.close()
+    if pid is not None:
+        _log_edit(pid, user, "Removed misc price item")
+
+
 # ── Quote calculation & snapshots ─────────────────────────────────────────────
 
 def _build_quote_inputs(p: dict, parts_data: list[dict]):
@@ -690,14 +759,27 @@ def _load_lease_items(pid: int) -> list[dict]:
         conn.close()
 
 
+def _load_lease_misc(pid: int) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM lease_misc WHERE project_id=? ORDER BY sort_order, id", (pid,)
+        ).fetchall()
+        return [row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def compute_quote_result(p: dict, parts_data: list[dict]) -> dict:
     """Compute the full quote result live from the current pricing constants."""
     if (p.get("business_model") or "parts") == "lease":
         lease_items = _load_lease_items(p["id"])
-        result = calc_lease_quote(p, lease_items)
+        lease_misc = _load_lease_misc(p["id"])
+        result = calc_lease_quote(p, lease_items, lease_misc)
         result["project"] = p
         result["parts"] = []
         result["lease_items"] = lease_items
+        result["lease_misc"] = lease_misc
         return result
     proj_inputs, part_inputs = _build_quote_inputs(p, parts_data)
     result = calc_project_quote(proj_inputs, part_inputs)
@@ -717,12 +799,13 @@ def compute_quote_result(p: dict, parts_data: list[dict]) -> dict:
     return result
 
 
-def _inputs_fingerprint(p: dict, parts_data: list[dict], lease_items: Optional[list[dict]] = None) -> str:
+def _inputs_fingerprint(p: dict, parts_data: list[dict], lease_items: Optional[list[dict]] = None, lease_misc: Optional[list[dict]] = None) -> str:
     """Stable hash of the quote-affecting inputs. Used to detect when a project's saved
     inputs have diverged from its active (frozen) quote snapshot. For lease projects,
     pass the snapshot's stored lease_items when hashing the frozen side."""
     if (p.get("business_model") or "parts") == "lease":
         items = lease_items if lease_items is not None else _load_lease_items(p["id"])
+        misc = lease_misc if lease_misc is not None else _load_lease_misc(p["id"])
         blob = {
             "business_model": "lease",
             "name": p.get("name"),
@@ -732,6 +815,11 @@ def _inputs_fingerprint(p: dict, parts_data: list[dict], lease_items: Optional[l
                 [{"kind": it.get("kind"), "robot_type": it.get("robot_type"), "quantity": int(it.get("quantity") or 0)}
                  for it in items],
                 key=lambda x: (x["kind"], x["robot_type"] or "", x["quantity"]),
+            ),
+            "misc": sorted(
+                [{"name": m.get("name") or "", "setup": float(m.get("setup_price") or 0), "annual": float(m.get("annual_price") or 0)}
+                 for m in misc],
+                key=lambda x: (x["name"], x["setup"], x["annual"]),
             ),
         }
         return hashlib.sha256(json.dumps(blob, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
@@ -974,7 +1062,7 @@ def get_quote(pid: int, user: dict = Depends(current_user)):
     inputs_stale = False
     if frozen_proj is not None and frozen_parts is not None:
         try:
-            inputs_stale = _inputs_fingerprint(p, parts_data) != _inputs_fingerprint(frozen_proj, frozen_parts, frozen.get("lease_items"))
+            inputs_stale = _inputs_fingerprint(p, parts_data) != _inputs_fingerprint(frozen_proj, frozen_parts, frozen.get("lease_items") or [], frozen.get("lease_misc") or [])
         except Exception:
             inputs_stale = False
 

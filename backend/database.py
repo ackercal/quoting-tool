@@ -66,6 +66,18 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_lease_items_project ON lease_items(project_id);
 
+    -- Additional misc priced items for a 'lease' project (name + one-time + annual PRICE).
+    CREATE TABLE IF NOT EXISTS lease_misc (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id   INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name         TEXT    NOT NULL DEFAULT '',
+        setup_price  REAL    NOT NULL DEFAULT 0,
+        annual_price REAL    NOT NULL DEFAULT 0,
+        sort_order   INTEGER NOT NULL DEFAULT 0,
+        created_at   TEXT    DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_lease_misc_project ON lease_misc(project_id);
+
     CREATE TABLE IF NOT EXISTS parts (
         id                          INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id                  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,

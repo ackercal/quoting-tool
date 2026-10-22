@@ -28,6 +28,7 @@ export interface Project {
   business_model?: 'parts' | 'lease';
   lease_years?: number;
   lease_items?: LeaseItem[];
+  lease_misc?: LeaseMisc[];
   created_at: string;
   updated_at: string;
   parts?: Part[];
@@ -42,8 +43,17 @@ export interface LeaseItem {
   sort_order: number;
 }
 
+export interface LeaseMisc {
+  id: number;
+  project_id: number;
+  name: string;
+  setup_price: number;
+  annual_price: number;
+  sort_order: number;
+}
+
 export interface LeaseLine {
-  kind: 'robot' | 'laser';
+  kind: 'robot' | 'laser' | 'misc';
   robot_type: string | null;
   label: string;
   quantity: number;

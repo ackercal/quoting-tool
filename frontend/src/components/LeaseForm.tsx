@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api/client'
 import type { ProjectCode } from '../api/client'
-import type { Project, LeaseItem } from '../types'
+import type { Project, LeaseItem, LeaseMisc } from '../types'
 import NumInput from './NumInput'
 import { ProjectCodeSelect } from './ProjectForm'
 
@@ -30,17 +30,26 @@ export default function LeaseForm({ project, onUpdate }: Props) {
   const [form, setForm]       = useState(project)
   const [items, setItems]     = useState<LeaseItem[]>(project.lease_items ?? [])
   const [qty, setQty]         = useState<Record<SlotKey, number>>(initQty(project.lease_items ?? []))
+  const [misc, setMisc]       = useState<LeaseMisc[]>(project.lease_misc ?? [])
   const [codes, setCodes]     = useState<ProjectCode[]>([])
   const [saveStatus, setSave] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   const savedRef  = useRef<string>(JSON.stringify(project))
   const itemsRef  = useRef(items);  useEffect(() => { itemsRef.current = items }, [items])
   const qtyRef    = useRef(qty);    useEffect(() => { qtyRef.current = qty }, [qty])
+  const miscRef   = useRef(misc);   useEffect(() => { miscRef.current = misc }, [misc])
   const timers    = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   useEffect(() => {
-    setForm(project); setItems(project.lease_items ?? []); setQty(initQty(project.lease_items ?? []))
+    setForm(project)
     savedRef.current = JSON.stringify(project)
+    // Load the latest lease items directly — the parent's copy can be stale after a
+    // project-level save or a tab switch (the PUT /projects response omits lease data).
+    let alive = true
+    api.getProject(project.id)
+      .then(p => { if (alive) { const li = p.lease_items ?? []; setItems(li); setQty(initQty(li)); setMisc(p.lease_misc ?? []) } })
+      .catch(() => { if (alive) { const li = project.lease_items ?? []; setItems(li); setQty(initQty(li)); setMisc(project.lease_misc ?? []) } })
+    return () => { alive = false }
   }, [project.id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { api.listProjectCodes({ show_all: true }).then(d => setCodes(d.codes)).catch(() => setCodes([])) }, [])
 
@@ -57,7 +66,8 @@ export default function LeaseForm({ project, onUpdate }: Props) {
       try {
         const updated = await api.updateProject(form.id, form)
         savedRef.current = serialized
-        onUpdate(updated)
+        // Keep lease data on the parent project — the PUT response doesn't include it.
+        onUpdate({ ...updated, lease_items: itemsRef.current, lease_misc: miscRef.current })
         setSave('saved'); setTimeout(() => setSave(s => (s === 'saved' ? 'idle' : s)), 1500)
       } catch { setSave('idle') }
     }, 600)
@@ -91,6 +101,38 @@ export default function LeaseForm({ project, onUpdate }: Props) {
     setSave('saving')
     clearTimeout(timers.current[slot])
     timers.current[slot] = setTimeout(() => reconcile(slot), 500)
+  }
+
+  // ── Additional misc priced items ──
+  async function addMisc() {
+    setSave('saving')
+    try {
+      const created = await api.createLeaseMisc(form.id, { name: '', setup_price: 0, annual_price: 0 })
+      setMisc(prev => [...prev, created])
+      setSave('saved'); setTimeout(() => setSave(s => (s === 'saved' ? 'idle' : s)), 1500)
+    } catch { setSave('idle') }
+  }
+  function changeMisc(id: number, patch: Partial<LeaseMisc>) {
+    setMisc(prev => prev.map(m => (m.id === id ? { ...m, ...patch } : m)))
+    setSave('saving')
+    const key = `misc-${id}`
+    clearTimeout(timers.current[key])
+    timers.current[key] = setTimeout(async () => {
+      const m = miscRef.current.find(x => x.id === id)
+      if (!m) return
+      try {
+        await api.updateLeaseMisc(id, { name: m.name, setup_price: m.setup_price, annual_price: m.annual_price })
+        setSave('saved'); setTimeout(() => setSave(s => (s === 'saved' ? 'idle' : s)), 1500)
+      } catch { setSave('idle') }
+    }, 600)
+  }
+  async function removeMisc(id: number) {
+    setSave('saving')
+    try {
+      await api.deleteLeaseMisc(id)
+      setMisc(prev => prev.filter(m => m.id !== id))
+      setSave('saved'); setTimeout(() => setSave(s => (s === 'saved' ? 'idle' : s)), 1500)
+    } catch { setSave('idle') }
   }
 
   const lockInput: React.CSSProperties = { background: 'var(--gray-100)', color: 'var(--gray-500)', cursor: 'not-allowed' }
@@ -157,6 +199,34 @@ export default function LeaseForm({ project, onUpdate }: Props) {
           <NumInput min={0} step={1} value={qty.laser} onChange={v => changeQty('laser', v)} />
         </div>
       </div>
+
+      {/* ── Additional misc prices ── */}
+      <div className="section-heading">Additional Misc Price</div>
+      <div className="field-hint" style={{ marginTop: -8, marginBottom: 12 }}>
+        Add any other line items. All values are <strong>prices</strong> (what the customer pays), not costs.
+      </div>
+      {misc.map(m => (
+        <div key={m.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: 12, flexWrap: 'wrap' }}>
+          <div className="field" style={{ flex: '2 1 220px', minWidth: 180 }}>
+            <label>Name</label>
+            <input value={m.name} onChange={e => changeMisc(m.id, { name: e.target.value })} placeholder="e.g. Spare parts package" />
+          </div>
+          <div className="field" style={{ flex: '0 0 170px' }}>
+            <label>One-Time Setup Price ($)</label>
+            <NumInput min={0} step={0.01} value={m.setup_price} onChange={v => changeMisc(m.id, { setup_price: Math.max(0, v) })} />
+          </div>
+          <div className="field" style={{ flex: '0 0 150px' }}>
+            <label>Annual Price ($)</label>
+            <NumInput min={0} step={0.01} value={m.annual_price} onChange={v => changeMisc(m.id, { annual_price: Math.max(0, v) })} />
+          </div>
+          <button onClick={() => removeMisc(m.id)} title="Remove"
+            style={{ border: 'none', background: 'none', color: 'var(--gray-400)', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 4px', marginBottom: 8, flexShrink: 0 }}>×</button>
+        </div>
+      ))}
+      <button onClick={addMisc}
+        style={{ fontSize: 13, fontWeight: 600, border: '1px dashed var(--gray-300)', background: '#fff', color: 'var(--gray-700)', borderRadius: 8, padding: '8px 14px', cursor: 'pointer' }}>
+        + Add misc price
+      </button>
 
       <div className="save-bar" style={{ marginTop: 28 }}>
         <span className="save-status" style={{ color: 'var(--gray-500)', fontSize: 13 }}>

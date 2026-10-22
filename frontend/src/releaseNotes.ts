@@ -28,6 +28,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.13.2',
+    date: '2026-10-22',
+    title: 'Edge Factory: misc prices + save fix',
+    summary: 'Add custom priced line items to a lease quote; fixed cell quantities not reloading.',
+    changes: [
+      { type: 'added', text: 'Edge Factory quotes have an “Additional Misc Price” section: add any number of custom line items with a name, a one-time setup price, and an annual price. Each flows into the quote and PDF (annual and/or one-time rows) and into the totals.' },
+      { type: 'fixed', text: 'Fixed cell and laser quantities showing as 0 when returning to the Edge Factory details tab (the values were saved, just not reloaded).' },
+    ],
+  },
+  {
     version: '1.13.1',
     date: '2026-10-19',
     title: 'Edge Factory quote polish',

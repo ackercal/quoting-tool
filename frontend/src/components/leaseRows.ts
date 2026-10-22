@@ -19,6 +19,7 @@ export function leaseLineRows(quote: QuoteResult): LeaseRow[] {
   const lines = quote.line_items ?? []
   const robots = lines.filter(l => l.kind === 'robot')
   const laser = lines.find(l => l.kind === 'laser')
+  const misc = lines.filter(l => l.kind === 'misc')
   const rows: LeaseRow[] = []
 
   // RoboCraftsman cell subscriptions (one row per robot size).
@@ -69,6 +70,34 @@ export function leaseLineRows(quote: QuoteResult): LeaseRow[] {
       annualFee: null,
       leaseTotal: laser.setup_line,
     })
+  }
+  // Additional misc priced items — each contributes an annual and/or one-time row.
+  for (const m of misc) {
+    const name = m.label || 'Additional item'
+    const hasAnnual = m.annual_each > 0
+    const hasSetup = m.setup_each > 0
+    if (hasAnnual) {
+      rows.push({
+        item: name,
+        description: '',
+        unit: m.annual_each,
+        quantity: 1,
+        term: 'Annual',
+        annualFee: m.annual_each,
+        leaseTotal: m.annual_each * years,
+      })
+    }
+    if (hasSetup) {
+      rows.push({
+        item: hasAnnual ? `${name} — Setup` : name,
+        description: '',
+        unit: m.setup_each,
+        quantity: 1,
+        term: 'One-Time',
+        annualFee: null,
+        leaseTotal: m.setup_each,
+      })
+    }
   }
   return rows
 }
