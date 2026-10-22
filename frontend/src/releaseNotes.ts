@@ -28,6 +28,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.13.3',
+    date: '2026-10-22',
+    title: 'Edge Factory: list vs discounted price + cell fixes',
+    summary: 'Show list price and discounted price separately; fix duplicate cell rows.',
+    changes: [
+      { type: 'changed', text: 'Edge Factory quote detail (quote + PDF): when a multi-year discount applies, the list “Unit Price” and the “Discounted Price” are now shown in separate columns.' },
+      { type: 'fixed', text: 'Fixed duplicate cell rows on a lease quote: cells now show one row per size (quantity summed), duplicate items are merged when the details tab is opened, and fast edits no longer create duplicates.' },
+    ],
+  },
+  {
     version: '1.13.2',
     date: '2026-10-22',
     title: 'Edge Factory: misc prices + save fix',

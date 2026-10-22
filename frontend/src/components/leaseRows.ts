@@ -2,10 +2,13 @@ import type { QuoteResult } from '../types'
 
 // A quote line in the finance "Edge Factory" format: each leased thing becomes a
 // Subscription (annual) row and an Installation & Training (one-time) row.
+// unitPrice is the normal/list price; discountedPrice is the net unit price when a
+// multi-year discount applies (null otherwise). annualFee / leaseTotal are net.
 export interface LeaseRow {
   item: string
   description: string
-  unit: number
+  unitPrice: number
+  discountedPrice: number | null
   quantity: number
   term: 'Annual' | 'One-Time'
   annualFee: number | null   // null on one-time rows
@@ -17,7 +20,20 @@ const SIZE_WORD: Record<string, string> = { Small: 'Small', Medium: 'Medium-size
 export function leaseLineRows(quote: QuoteResult): LeaseRow[] {
   const years = quote.lease_years ?? 0
   const lines = quote.line_items ?? []
-  const robots = lines.filter(l => l.kind === 'robot')
+  // Aggregate robot lines by type so duplicate cell entries collapse into one row.
+  const byType = new Map<string, typeof lines[number]>()
+  for (const l of lines.filter(x => x.kind === 'robot')) {
+    const key = l.robot_type || 'Small'
+    const cur = byType.get(key)
+    if (cur) {
+      cur.quantity += l.quantity
+      cur.annual_line += l.annual_line
+      cur.setup_line += l.setup_line
+    } else {
+      byType.set(key, { ...l, robot_type: key })
+    }
+  }
+  const robots = [...byType.values()]
   const laser = lines.find(l => l.kind === 'laser')
   const misc = lines.filter(l => l.kind === 'misc')
   const rows: LeaseRow[] = []
@@ -29,7 +45,8 @@ export function leaseLineRows(quote: QuoteResult): LeaseRow[] {
     rows.push({
       item: `RoboCraftsman Cell Subscription${r.robot_type ? ` — ${r.robot_type}` : ''}`,
       description: `${size} cell${models ? ` (${models})` : ''} and the Machina software to operate it. Includes onsite support: cell operations, maintenance, and spare parts. Excludes shipping.`,
-      unit: r.annual_each,
+      unitPrice: r.annual_each_base,
+      discountedPrice: r.annual_each < r.annual_each_base ? r.annual_each : null,
       quantity: r.quantity,
       term: 'Annual',
       annualFee: r.annual_line,
@@ -43,7 +60,8 @@ export function leaseLineRows(quote: QuoteResult): LeaseRow[] {
     rows.push({
       item: 'RoboCraftsman Installation & Training',
       description: 'Installation of all cells and training of onsite staff.',
-      unit: setupEach,
+      unitPrice: setupEach,
+      discountedPrice: null,
       quantity: totalRobotCells,
       term: 'One-Time',
       annualFee: null,
@@ -55,7 +73,8 @@ export function leaseLineRows(quote: QuoteResult): LeaseRow[] {
     rows.push({
       item: 'Laser Welding Subscription',
       description: 'Laser welding equipment and maintenance (including spare parts).',
-      unit: laser.annual_each,
+      unitPrice: laser.annual_each_base,
+      discountedPrice: laser.annual_each < laser.annual_each_base ? laser.annual_each : null,
       quantity: laser.quantity,
       term: 'Annual',
       annualFee: laser.annual_line,
@@ -64,7 +83,8 @@ export function leaseLineRows(quote: QuoteResult): LeaseRow[] {
     rows.push({
       item: 'Laser Welding Installation & Training',
       description: 'Installation of laser welding and training of onsite staff.',
-      unit: laser.setup_each,
+      unitPrice: laser.setup_each,
+      discountedPrice: null,
       quantity: laser.quantity,
       term: 'One-Time',
       annualFee: null,
@@ -80,7 +100,8 @@ export function leaseLineRows(quote: QuoteResult): LeaseRow[] {
       rows.push({
         item: name,
         description: '',
-        unit: m.annual_each,
+        unitPrice: m.annual_each,
+        discountedPrice: null,
         quantity: 1,
         term: 'Annual',
         annualFee: m.annual_each,
@@ -91,7 +112,8 @@ export function leaseLineRows(quote: QuoteResult): LeaseRow[] {
       rows.push({
         item: hasAnnual ? `${name} — Setup` : name,
         description: '',
-        unit: m.setup_each,
+        unitPrice: m.setup_each,
+        discountedPrice: null,
         quantity: 1,
         term: 'One-Time',
         annualFee: null,

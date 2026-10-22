@@ -59,6 +59,7 @@ export default function LeaseQuoteView({ projectId }: Props) {
   const schedule = quote.year_schedule ?? []
   const hasItems = lines.length > 0
   const rows = leaseLineRows(quote)
+  const showDisc = !!quote.discount_applied
 
   const card = (label: string, value: string, sub?: string) => (
     <div style={{ background: '#191919', borderRadius: 10, padding: '14px 18px', flex: 1, minWidth: 180 }}>
@@ -127,11 +128,12 @@ export default function LeaseQuoteView({ projectId }: Props) {
           {/* Line-item pricing (finance "Edge Factory" format) */}
           <div className="section-heading" style={{ marginTop: 0 }}>Quote Detail</div>
           <div style={{ border: '1px solid var(--gray-200)', borderRadius: 10, overflow: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: showDisc ? 720 : 620 }}>
               <thead>
                 <tr>
                   <th style={th}>Item</th>
                   <th style={{ ...th, textAlign: 'right' }}>Unit Price</th>
+                  {showDisc && <th style={{ ...th, textAlign: 'right' }}>Discounted Price</th>}
                   <th style={{ ...th, textAlign: 'right' }}>Qty</th>
                   <th style={{ ...th, textAlign: 'center' }}>Term</th>
                   <th style={{ ...th, textAlign: 'right' }}>Annual Fee</th>
@@ -142,7 +144,8 @@ export default function LeaseQuoteView({ projectId }: Props) {
                 {rows.map((r, i) => (
                   <tr key={i}>
                     <td style={{ ...td, fontWeight: 600 }}>{r.item}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>{$(r.unit)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{$(r.unitPrice)}</td>
+                    {showDisc && <td style={{ ...td, textAlign: 'right' }}>{r.discountedPrice == null ? '—' : $(r.discountedPrice)}</td>}
                     <td style={{ ...td, textAlign: 'right' }}>{r.quantity}</td>
                     <td style={{ ...td, textAlign: 'center' }}>{r.term}</td>
                     <td style={{ ...td, textAlign: 'right' }}>{r.annualFee == null ? '—' : $(r.annualFee)}</td>
@@ -151,7 +154,7 @@ export default function LeaseQuoteView({ projectId }: Props) {
                 ))}
                 <tr style={{ background: 'var(--gray-50, #f9f9f9)' }}>
                   <td style={{ ...td, fontWeight: 700 }}>Total</td>
-                  <td style={td} /><td style={td} /><td style={td} />
+                  <td style={td} />{showDisc && <td style={td} />}<td style={td} /><td style={td} />
                   <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{$(quote.annual_total ?? 0)}</td>
                   <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: 'var(--orange, #d97800)' }}>{$(quote.total_contract ?? 0)}</td>
                 </tr>

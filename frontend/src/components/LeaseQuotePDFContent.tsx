@@ -13,6 +13,7 @@ export default function LeaseQuotePDFContent({ quote }: Props) {
   const years = quote.lease_years ?? 0
   const schedule = quote.year_schedule ?? []
   const rows = leaseLineRows(quote)
+  const showDisc = !!quote.discount_applied
 
   return (
     <div style={{ fontFamily: "'Roboto', sans-serif", background: '#fff', color: '#191919', width: 800, padding: 0 }}>
@@ -71,6 +72,7 @@ export default function LeaseQuotePDFContent({ quote }: Props) {
             <tr style={{ background: '#F5F5F5' }}>
               <th style={{ ...th, textAlign: 'left' }}>Item</th>
               <th style={{ ...th, textAlign: 'right' }}>Unit Price</th>
+              {showDisc && <th style={{ ...th, textAlign: 'right' }}>Discounted Price</th>}
               <th style={{ ...th, textAlign: 'right' }}>Qty</th>
               <th style={{ ...th, textAlign: 'center' }}>Term</th>
               <th style={{ ...th, textAlign: 'right' }}>Annual Fee</th>
@@ -81,7 +83,8 @@ export default function LeaseQuotePDFContent({ quote }: Props) {
             {rows.map((r, i) => (
               <tr key={i}>
                 <td style={{ ...td, fontWeight: 600 }}>{r.item}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{$(r.unit)}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{$(r.unitPrice)}</td>
+                {showDisc && <td style={{ ...td, textAlign: 'right' }}>{r.discountedPrice == null ? '—' : $(r.discountedPrice)}</td>}
                 <td style={{ ...td, textAlign: 'right' }}>{r.quantity}</td>
                 <td style={{ ...td, textAlign: 'center' }}>{r.term}</td>
                 <td style={{ ...td, textAlign: 'right' }}>{r.annualFee == null ? '—' : $(r.annualFee)}</td>
@@ -90,7 +93,7 @@ export default function LeaseQuotePDFContent({ quote }: Props) {
             ))}
             <tr style={{ background: '#F5F5F5' }}>
               <td style={{ ...td, fontWeight: 700 }}>Total</td>
-              <td style={td} /><td style={td} /><td style={td} />
+              <td style={td} />{showDisc && <td style={td} />}<td style={td} /><td style={td} />
               <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{$(quote.annual_total ?? 0)}</td>
               <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#FF9900' }}>{$(quote.total_contract ?? 0)}</td>
             </tr>

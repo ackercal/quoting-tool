@@ -21,9 +21,27 @@ function initQty(items: LeaseItem[]): Record<SlotKey, number> {
   const q: Record<SlotKey, number> = { Small: 0, Medium: 0, Large: 0, laser: 0 }
   for (const it of items) {
     if (it.kind === 'laser') q.laser += it.quantity
-    else if (it.robot_type) q[it.robot_type] = it.quantity
+    else if (it.robot_type) q[it.robot_type] += it.quantity
   }
   return q
+}
+
+// Merge any duplicate slot items (same kind/type) into one — legacy data or a rare
+// create race. Keeps the first, sums quantities into it, deletes the rest.
+async function consolidate(pid: number, items: LeaseItem[]): Promise<LeaseItem[]> {
+  const groups = new Map<string, LeaseItem[]>()
+  for (const it of items) {
+    const key = it.kind === 'laser' ? 'laser' : `robot:${it.robot_type}`
+    const arr = groups.get(key); if (arr) arr.push(it); else groups.set(key, [it])
+  }
+  const dupes = [...groups.values()].filter(a => a.length > 1)
+  if (!dupes.length) return items
+  for (const [keep, ...extra] of dupes) {
+    const total = [keep, ...extra].reduce((s, x) => s + x.quantity, 0)
+    await api.updateLeaseItem(keep.id, { kind: keep.kind, robot_type: keep.robot_type, quantity: total })
+    for (const e of extra) await api.deleteLeaseItem(e.id)
+  }
+  return (await api.getProject(pid)).lease_items ?? []
 }
 
 export default function LeaseForm({ project, onUpdate }: Props) {
@@ -39,6 +57,7 @@ export default function LeaseForm({ project, onUpdate }: Props) {
   const qtyRef    = useRef(qty);    useEffect(() => { qtyRef.current = qty }, [qty])
   const miscRef   = useRef(misc);   useEffect(() => { miscRef.current = misc }, [misc])
   const timers    = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const creatingRef = useRef<Set<SlotKey>>(new Set())
 
   useEffect(() => {
     setForm(project)
@@ -47,7 +66,10 @@ export default function LeaseForm({ project, onUpdate }: Props) {
     // project-level save or a tab switch (the PUT /projects response omits lease data).
     let alive = true
     api.getProject(project.id)
-      .then(p => { if (alive) { const li = p.lease_items ?? []; setItems(li); setQty(initQty(li)); setMisc(p.lease_misc ?? []) } })
+      .then(async p => {
+        const li = await consolidate(project.id, p.lease_items ?? [])
+        if (alive) { setItems(li); setQty(initQty(li)); setMisc(p.lease_misc ?? []) }
+      })
       .catch(() => { if (alive) { const li = project.lease_items ?? []; setItems(li); setQty(initQty(li)); setMisc(project.lease_misc ?? []) } })
     return () => { alive = false }
   }, [project.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -88,8 +110,17 @@ export default function LeaseForm({ project, onUpdate }: Props) {
           setItems(prev => prev.map(i => (i.id === item.id ? { ...i, quantity: n } : i)))
         }
       } else if (n > 0) {
-        const created = await api.createLeaseItem(form.id, slot === 'laser' ? { kind: 'laser', quantity: n } : { kind: 'robot', robot_type: slot, quantity: n })
-        setItems(prev => [...prev, created])
+        // Guard against a double-create if edits land while a create is in flight.
+        if (creatingRef.current.has(slot)) return
+        creatingRef.current.add(slot)
+        try {
+          const created = await api.createLeaseItem(form.id, slot === 'laser' ? { kind: 'laser', quantity: n } : { kind: 'robot', robot_type: slot, quantity: n })
+          setItems(prev => [...prev, created])
+        } finally {
+          creatingRef.current.delete(slot)
+          // Apply any newer quantity typed while the create was in flight.
+          if (qtyRef.current[slot] !== n) reconcile(slot)
+        }
       }
       setSave('saved'); setTimeout(() => setSave(s => (s === 'saved' ? 'idle' : s)), 1500)
     } catch { setSave('idle') }
