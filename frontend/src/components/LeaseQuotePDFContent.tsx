@@ -32,7 +32,7 @@ export default function LeaseQuotePDFContent({ quote }: Props) {
       <div style={{ background: '#F5F5F5', padding: '14px 40px', display: 'flex', gap: 40, borderBottom: '1px solid #E8E8E8' }}>
         {[
           ['Lease Length', `${years} years`],
-          ['RoboCraftsman Cells', `${quote.total_cells ?? 0}${quote.cell_tier ? ` (${quote.cell_tier} tier)` : ''}`],
+          ['RoboCraftsman Cells', `${quote.total_cells ?? 0}`],
           ...(quote.discount_applied ? [['Multi-year Discount', '5% (5+ years)']] : []),
         ].map(([label, value]) => (
           <div key={label}>
@@ -57,13 +57,6 @@ export default function LeaseQuotePDFContent({ quote }: Props) {
             </div>
           ))}
         </div>
-
-        {quote.discount_applied && (
-          <div style={{ background: '#e6f4ea', border: '1px solid #b7e0c3', borderRadius: 8, padding: '10px 14px', marginBottom: 24, fontSize: 13, color: '#256a3a' }}>
-            <strong>5% multi-year discount applied</strong> (lease is {years} years). Each cell’s annual price is reduced by 5%:
-            annual before discount {$(quote.annual_undiscounted ?? 0)} → <strong>{$(quote.annual_total ?? 0)}</strong>, saving {$(quote.annual_savings ?? 0)} per year.
-          </div>
-        )}
 
         {/* Annual cost by year (chart) */}
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: '#1A1A1A', marginBottom: 12 }}>Annual Cost by Year</div>
