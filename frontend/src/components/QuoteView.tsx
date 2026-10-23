@@ -544,9 +544,9 @@ export default function QuoteView({ projectId }: Props) {
               <td className="right">—</td>
             </tr>
             <tr>
-              <td>Shipping</td>
+              <td>Shipping (per assembly)</td>
               <td className="right">{$2(project.shipping_cost ?? 0)}</td>
-              <td className="right">—</td>
+              <td className="right">{$2(project.shipping_cost ?? 0)}</td>
             </tr>
           </tbody>
         </table>

@@ -241,12 +241,12 @@ export default function ProjectForm({ project, onUpdate }: Props) {
           <div className="field-hint">Splitting, DFM, Jig Design, etc.</div>
         </div>
         <div className="field">
-          <label>Shipping Cost ($)</label>
+          <label>Shipping Cost per Assembly ($)</label>
           <div className="field-dollar">
             <NumInput min={0} step={0.01} value={form.shipping_cost}
               onChange={v => set('shipping_cost', v)} />
           </div>
-          <div className="field-hint">Delivering project to the customer</div>
+          <div className="field-hint">Applied to each assembly (first + every duplicate)</div>
         </div>
       </div>
 

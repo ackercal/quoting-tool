@@ -594,21 +594,25 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
     proj_purchaser    = PROJECT_HOURS["purchaser"].get(year, 1.0) * _rate("Purchaser", year)
     proj_pm           = PROJECT_HOURS["pm"].get(year, 1.0)        * _rate("PM",        year)
 
+    # shipping_cost is PER ASSEMBLY — it applies to the first assembly and to each
+    # duplicate, so it folds into both assembly totals (and the two reconcile to the total).
     first_assembly_total = (
         parts_first + rpe_splitting
         + proj_purchaser + proj_pm
         + project.assembly_first_part_setup
         + project.assembly_pp_external
         + project.assembly_pp_internal
+        + project.shipping_cost
     )
     dup_assembly_total = (
         parts_dup
         + project.assembly_pp_external
         + project.assembly_pp_internal
+        + project.shipping_cost
     )
 
     n_dup      = project.quantity_of_assemblies - 1
-    total_cost = first_assembly_total + dup_assembly_total * n_dup + project.shipping_cost
+    total_cost = first_assembly_total + dup_assembly_total * n_dup
     margin     = project.internal_margin
     osp_m      = project.osp_margin
 
@@ -627,7 +631,7 @@ def calc_project_quote(project: ProjectInputs, parts: list[PartInputs]) -> dict:
         + project.assembly_pp_internal * project.quantity_of_assemblies
         + project.assembly_pp_external * project.quantity_of_assemblies
     )
-    proj_cat["shipping"] += project.shipping_cost
+    proj_cat["shipping"] += project.shipping_cost * project.quantity_of_assemblies
 
     # ── OSP vs internal price split ───────────────────────────────────────────
     external_pp_total = (

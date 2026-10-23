@@ -28,6 +28,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '1.14.0',
+    date: '2026-10-23',
+    title: 'Shipping cost is now per assembly',
+    summary: 'Shipping applies to each assembly, so the first/duplicate prices add up to the total.',
+    changes: [
+      { type: 'changed', text: 'Renamed the project “Shipping Cost” field to “Shipping Cost per Assembly” — it now applies to the first assembly and every duplicate (still marked up at the 10% outside-service margin).' },
+      { type: 'fixed', text: 'First Assembly Price + Duplicate Assembly Price × quantity now equals the Total (and the same for costs). Previously a flat project shipping cost was left out of both assembly figures, so they didn’t add up to the total.' },
+    ],
+  },
+  {
     version: '1.13.3',
     date: '2026-10-22',
     title: 'Edge Factory: list vs discounted price + cell fixes',
